@@ -1,104 +1,308 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>in prose – Books and data — perfectly bound.</title>
-  <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --accent: #FF7F32;
-      --bg-medium: #F4DCC2;
-      --text: #1b1b1b;
-    }
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>in prose – Books and data — perfectly bound.</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Crimson+Text:wght@400;700&display=swap"
+            rel="stylesheet"
+        />
+        <script
+            src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+            async
+            defer
+        ></script>
+        <style>
+            :root {
+                --accent: #ff7f32;
+                --bg-medium: #f4dcc2;
+                --text: #1b1b1b;
+            }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
 
-    body {
-      font-family: "Crimson Text", serif;
-      background: var(--bg-medium);
-      color: var(--text);
-      min-height: 100svh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      gap: 2rem; /* even spacing between logo and band */
-    }
+            body {
+                font-family: "Crimson Text", serif;
+                background: var(--bg-medium);
+                color: var(--text);
+                min-height: 100svh;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding: 2.5rem 1rem 4rem;
+            }
 
-    header img {
-      width: 200px;
-      height: auto;
-    }
+            header {
+                margin-bottom: 2rem;
+            }
 
-    /* Center the band in the viewport */
-    .page-container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      flex-grow: 1;
-      width: 100%;
-    }
+            header img {
+                width: 200px;
+                height: auto;
+            }
 
-    .orange-band {
-      background: var(--accent);
-      width: 100%;
-      height: 30vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
+            .orange-band {
+                background: var(--accent);
+                width: 100%;
+                max-width: 100vw;
+                padding: 2.5rem 1.5rem;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            }
 
-    /* Text styles matching your Font.Theme */
-    h1 {
-      text-transform: lowercase;
-      font-weight: 700;
-      font-size: 48px;
-      color: #000;
-      margin-bottom: 0.4rem;
-    }
+            h1 {
+                text-transform: lowercase;
+                font-weight: 700;
+                font-size: 48px;
+                color: #000;
+                margin-bottom: 0.4rem;
+            }
 
-    p.tagline {
-      font-weight: 400;
-      font-size: 28px;
-      color: #000;
-      margin: 0.2rem 0;
-    }
+            p.tagline {
+                font-weight: 400;
+                font-size: 28px;
+                color: #000;
+            }
 
-    p.comingsoon {
-      font-weight: 400;
-      font-size: 28px;
-      color: #000;
-      margin-top: 1rem;
-    }
+            /* Signup section */
+            .signup-section {
+                width: 100%;
+                max-width: 460px;
+                padding-top: 2.5rem;
+                text-align: center;
+            }
 
-    @media (max-width: 600px) {
-      header img {
-        width: 140px;
-      }
-      .orange-band {
-        height: 40vh;
-      }
-      h1 { font-size: 36px; }
-      p.tagline, p.comingsoon { font-size: 22px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="page-container">
-    <header>
-      <img src="logo.png" alt="in prose logo">
-    </header>
+            .signup-section p.intro {
+                font-size: 1.25rem;
+                color: var(--text);
+                margin-bottom: 1.5rem;
+            }
 
-    <div class="orange-band">
-      <h1>in prose</h1>
-      <p class="tagline">Books and data — perfectly bound.</p>
-      <p class="comingsoon">Coming soon</p>
-    </div>
-  </div>
-</body>
+            .signup-section form {
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+                align-items: center;
+            }
+
+            .signup-section input {
+                width: 100%;
+                padding: 0.75rem 1rem;
+                font-family: "Crimson Text", serif;
+                font-size: 1.1rem;
+                border: 1.5px solid rgba(27, 27, 27, 0.25);
+                border-radius: 8px;
+                background: #fff;
+                color: var(--text);
+                outline: none;
+                transition: border-color 0.15s;
+            }
+
+            .signup-section input:focus {
+                border-color: var(--accent);
+            }
+
+            .signup-section input::placeholder {
+                color: rgba(27, 27, 27, 0.4);
+            }
+
+            /* Turnstile widget centered */
+            .cf-turnstile {
+                margin: 0.25rem 0;
+            }
+
+            .signup-section button {
+                width: 100%;
+                padding: 0.8rem 1.5rem;
+                font-family: "Crimson Text", serif;
+                font-size: 1.15rem;
+                font-weight: 700;
+                background: var(--accent);
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: opacity 0.15s;
+            }
+
+            .signup-section button:hover:not(:disabled) {
+                opacity: 0.88;
+            }
+
+            .signup-section button:disabled {
+                opacity: 0.55;
+                cursor: default;
+            }
+
+            .feedback {
+                font-size: 1rem;
+                padding: 0.4rem 0;
+                min-height: 1.5rem;
+            }
+
+            .feedback.error {
+                color: #c0392b;
+            }
+            .feedback.success {
+                color: #2e7d32;
+            }
+
+            .success-message {
+                font-size: 1.2rem;
+                color: var(--text);
+                padding: 1rem 0;
+                line-height: 1.5;
+            }
+
+            @media (max-width: 600px) {
+                header img {
+                    width: 140px;
+                }
+                h1 {
+                    font-size: 36px;
+                }
+                p.tagline {
+                    font-size: 22px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <img src="logo.png" alt="in prose logo" />
+        </header>
+
+        <div class="orange-band">
+            <h1>in prose</h1>
+            <p class="tagline">Books and data — perfectly bound.</p>
+        </div>
+
+        <div class="signup-section">
+            <p class="intro">Sign up for early beta access.</p>
+
+            <form id="signup-form" novalidate>
+                <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    placeholder="Your name"
+                    autocomplete="name"
+                    required
+                />
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="Email address"
+                    autocomplete="email"
+                    required
+                />
+                <div
+                    class="cf-turnstile"
+                    data-sitekey="0x4AAAAAACtZB8AYCwk2wgLB"
+                    data-theme="light"
+                ></div>
+                <div
+                    id="form-feedback"
+                    class="feedback"
+                    aria-live="polite"
+                ></div>
+                <button type="submit">Request beta access</button>
+            </form>
+        </div>
+
+        <script>
+            const form = document.getElementById("signup-form");
+            const feedback = document.getElementById("form-feedback");
+            const btn = form.querySelector('button[type="submit"]');
+
+            form.addEventListener("submit", async (e) => {
+                e.preventDefault();
+
+                const name = document.getElementById("name").value.trim();
+                const email = document.getElementById("email").value.trim();
+
+                if (!name || !email) {
+                    showFeedback(
+                        "Please fill in your name and email.",
+                        "error",
+                    );
+                    return;
+                }
+
+                const token =
+                    typeof turnstile !== "undefined"
+                        ? turnstile.getResponse()
+                        : null;
+                if (!token) {
+                    showFeedback(
+                        "Please complete the verification above.",
+                        "error",
+                    );
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = "Sending…";
+                clearFeedback();
+
+                try {
+                    const res = await fetch("/.netlify/functions/signup", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ name, email, token }),
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        form.innerHTML =
+                            "<p class=\"success-message\">You're on the list! We'll be in touch when beta access opens.</p>";
+                    } else if (res.status === 409) {
+                        showFeedback(
+                            "That email is already signed up!",
+                            "error",
+                        );
+                        resetForm();
+                    } else {
+                        showFeedback(
+                            "Something went wrong — please try again.",
+                            "error",
+                        );
+                        resetForm();
+                    }
+                } catch {
+                    showFeedback(
+                        "Something went wrong — please try again.",
+                        "error",
+                    );
+                    resetForm();
+                }
+            });
+
+            function showFeedback(msg, type) {
+                feedback.textContent = msg;
+                feedback.className = "feedback " + type;
+            }
+
+            function clearFeedback() {
+                feedback.textContent = "";
+                feedback.className = "feedback";
+            }
+
+            function resetForm() {
+                btn.disabled = false;
+                btn.textContent = "Request beta access";
+                if (typeof turnstile !== "undefined") turnstile.reset();
+            }
+        </script>
+    </body>
 </html>

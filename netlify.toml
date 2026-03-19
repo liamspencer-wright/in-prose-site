@@ -1,6 +1,10 @@
 [build]
   publish = "."
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
 [[headers]]
   for = "/.well-known/apple-app-site-association"
   [headers.values]
@@ -9,6 +13,11 @@
 [[redirects]]
   from = "/confirmed"
   to = "/confirmed.html"
+  status = 200
+
+[[redirects]]
+  from = "/signup-success"
+  to = "/signup-success.html"
   status = 200
 
 [[redirects]]
