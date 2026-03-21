@@ -205,7 +205,7 @@ export default async function PublicProfilePage({ params }: Props) {
               {favourites.map((fav) => (
                 <Link
                   key={fav.isbn13}
-                  href={`/library/${fav.isbn13}`}
+                  href={`/library/${fav.isbn13}?from=account`}
                   className="aspect-[2/3] w-[calc((100%-2rem)/5)] max-w-[100px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
                 >
                   {fav.cover_url ? (
