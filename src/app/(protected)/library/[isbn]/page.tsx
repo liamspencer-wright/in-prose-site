@@ -163,7 +163,7 @@ export default function BookDetailPage() {
   const coverSrc = book.cover_url || book.image_original;
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-6 pt-4 pb-12 max-sm:px-4">
+    <div className="mx-auto w-full max-w-2xl px-8 pt-6 pb-12 max-sm:px-5">
       <Link
         href="/library"
         className="mb-4 inline-block text-sm text-accent hover:underline"

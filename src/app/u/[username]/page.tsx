@@ -160,7 +160,7 @@ export default async function PublicProfilePage({ params }: Props) {
               {currentlyReading.map((book) => (
                 <Link
                   key={book.isbn13}
-                  href={`/u/${profile.username}/book/${book.isbn13}`}
+                  href={`/library/${book.isbn13}`}
                   className="flex w-[280px] flex-shrink-0 snap-center gap-3"
                 >
                   <div className="aspect-[2/3] w-[80px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
@@ -172,14 +172,14 @@ export default async function PublicProfilePage({ params }: Props) {
                     )}
                   </div>
                   <div className="flex min-w-0 flex-col justify-center">
-                    <p className="line-clamp-2 text-sm font-semibold leading-tight text-white">
+                    <p className="line-clamp-2 text-base font-semibold leading-tight text-white">
                       {book.title ?? "Untitled"}
                     </p>
                     {book.first_author_name && (
-                      <p className="mt-0.5 text-xs text-white/60">{book.first_author_name}</p>
+                      <p className="mt-1 text-sm text-white/60">{book.first_author_name}</p>
                     )}
                     {book.started_at && (
-                      <p className="mt-1 text-[10px] text-white/40">
+                      <p className="mt-1.5 text-xs text-white/40">
                         Started{" "}
                         {new Date(book.started_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       </p>
@@ -205,7 +205,7 @@ export default async function PublicProfilePage({ params }: Props) {
               {favourites.map((fav) => (
                 <Link
                   key={fav.isbn13}
-                  href={`/u/${profile.username}/book/${fav.isbn13}`}
+                  href={`/library/${fav.isbn13}`}
                   className="aspect-[2/3] w-[calc((100%-2rem)/5)] max-w-[100px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
                 >
                   {fav.cover_url ? (
@@ -240,7 +240,7 @@ export default async function PublicProfilePage({ params }: Props) {
             {publicBooks.map((book) => (
               <Link
                 key={book.isbn13}
-                href={`/u/${profile.username}/book/${book.isbn13}`}
+                href={`/library/${book.isbn13}`}
                 className="aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)]"
               >
                 {book.cover_url ? (
