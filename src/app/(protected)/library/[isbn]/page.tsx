@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter, useParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 
 type BookDetail = {
@@ -176,11 +175,10 @@ export default function BookDetailPage() {
       <div className="mb-6 flex gap-5 max-sm:flex-col max-sm:items-center">
         <div className="h-[180px] w-[120px] flex-shrink-0 overflow-hidden rounded-xl bg-bg-medium shadow-[0_2px_12px_rgba(0,0,0,0.1)]">
           {coverSrc ? (
-            <Image
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
               src={coverSrc}
               alt={book.title ?? "Book cover"}
-              width={120}
-              height={180}
               className="h-full w-full object-cover"
             />
           ) : (

@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
-import Image from "next/image";
 import Link from "next/link";
 
 type StatusFilter = "all" | "to_read" | "reading" | "finished" | "dnf";
@@ -193,11 +192,10 @@ function BookCover({ book }: { book: LibraryBook }) {
       className="group aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
     >
       {book.cover_url ? (
-        <Image
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
           src={book.cover_url}
           alt={book.title ?? "Book cover"}
-          width={160}
-          height={240}
           className="h-full w-full object-cover"
         />
       ) : (
