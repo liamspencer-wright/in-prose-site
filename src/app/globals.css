@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+@theme {
+  --color-accent: #ff7f32;
+  --color-accent-hover: #e6712d;
+  --color-bg-light: #fbf1ec;
+  --color-bg-medium: #f4dcc2;
+  --color-text-primary: #1b1b1b;
+  --color-text-muted: rgba(27, 27, 27, 0.65);
+  --color-text-subtle: rgba(27, 27, 27, 0.35);
+  --color-error: #c0392b;
+  --color-border: rgba(27, 27, 27, 0.1);
+  --color-border-subtle: rgba(27, 27, 27, 0.06);
+
+  --font-serif: "Crimson Text", serif;
+
+  --radius-card: 16px;
+  --radius-input: 10px;
+}

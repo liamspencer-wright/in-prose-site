@@ -1,24 +1,18 @@
 [build]
-  publish = "."
+  command = "npm run build"
+  publish = ".next"
 
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
 [[headers]]
   for = "/.well-known/apple-app-site-association"
   [headers.values]
     Content-Type = "application/json"
-
-[[redirects]]
-  from = "/confirmed"
-  to = "/confirmed.html"
-  status = 200
-
-[[redirects]]
-  from = "/signup-success"
-  to = "/signup-success.html"
-  status = 200
 
 [[redirects]]
   from = "http://*"
@@ -31,8 +25,3 @@
   to = "https://inprose.co.uk/:splat"
   status = 301
   force = true
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
