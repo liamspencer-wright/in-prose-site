@@ -2,6 +2,7 @@ import Image from "next/image";
 import Script from "next/script";
 import Link from "next/link";
 import { SignupForm } from "./signup-form";
+import { NavBar } from "@/components/nav-bar";
 
 export default function HomePage() {
   return (
@@ -12,23 +13,7 @@ export default function HomePage() {
       />
 
       <div className="flex min-h-svh flex-col">
-        {/* Nav */}
-        <nav className="flex items-center justify-between px-6 py-4 max-sm:px-4">
-          <Image
-            src="/logo.png"
-            alt="in prose logo"
-            width={100}
-            height={100}
-            className="h-auto w-[100px] max-sm:w-[80px]"
-            priority
-          />
-          <Link
-            href="/login"
-            className="rounded-(--radius-input) border-[1.5px] border-accent px-5 py-2 font-serif text-base font-semibold text-accent transition-colors hover:bg-accent hover:text-white"
-          >
-            Log in
-          </Link>
-        </nav>
+        <NavBar />
 
         {/* Hero */}
         <section className="flex flex-col items-center px-4 pt-12 pb-16 text-center max-sm:pt-8 max-sm:pb-12">
@@ -51,27 +36,39 @@ export default function HomePage() {
           <div className="grid gap-6 sm:grid-cols-3">
             <FeatureCard
               icon={
-                <svg viewBox="0 0 24 24" className="h-8 w-8 fill-accent">
-                  <path d="M21 4H3a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1zM4 18V6h7v12H4zm9 0V6h7v12h-7z" />
-                </svg>
+                <Image
+                  src="/icons/library.png"
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="h-10 w-10"
+                />
               }
               title="Your library"
               description="Scan barcodes to add books instantly. Track what you're reading, what you've finished, and what's next."
             />
             <FeatureCard
               icon={
-                <svg viewBox="0 0 24 24" className="h-8 w-8 fill-accent">
-                  <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
-                </svg>
+                <Image
+                  src="/icons/friends.png"
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="h-10 w-10"
+                />
               }
               title="Read with friends"
               description="Connect with friends, see what they're reading, and discover books in common."
             />
             <FeatureCard
               icon={
-                <svg viewBox="0 0 24 24" className="h-8 w-8 fill-accent">
-                  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z" />
-                </svg>
+                <Image
+                  src="/icons/charts.png"
+                  alt=""
+                  width={40}
+                  height={40}
+                  className="h-10 w-10"
+                />
               }
               title="Reading stats"
               description="Set reading targets, track your pace, and see your reading habits over time."
