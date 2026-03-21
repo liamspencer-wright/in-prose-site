@@ -17,7 +17,7 @@ export default function SignupSuccessPage() {
         </p>
         <p className="mt-6">
           <Link href="/" className="text-accent hover:underline">
-            &larr; Back to In Prose
+            &larr; Back to in prose
           </Link>
         </p>
       </main>

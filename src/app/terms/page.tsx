@@ -27,7 +27,7 @@ export default function TermsPage() {
       <div className="space-y-6 leading-relaxed text-text-muted [&_h2]:mb-2 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-text-primary">
         <h2>1. Beta disclaimer</h2>
         <p>
-          In Prose is currently in beta. Features may change, break, or be
+          in prose is currently in beta. Features may change, break, or be
           removed without notice. Data may be reset during the beta period.
         </p>
 
@@ -41,7 +41,7 @@ export default function TermsPage() {
         <h2>3. User content</h2>
         <p>
           You retain ownership of any content you create (reviews, ratings,
-          etc.). By using the app, you grant In Prose a licence to display your
+          etc.). By using the app, you grant in prose a licence to display your
           content within the app to other users as part of social features.
         </p>
 
@@ -69,7 +69,7 @@ export default function TermsPage() {
 
         <h2>7. End User License Agreement</h2>
         <p>
-          In Prose grants you a limited, non-exclusive, non-transferable licence
+          in prose grants you a limited, non-exclusive, non-transferable licence
           to use the app for personal, non-commercial purposes. You may not
           reverse-engineer, decompile, or redistribute the app. This licence
           terminates when you delete your account or the beta period ends.
@@ -78,7 +78,7 @@ export default function TermsPage() {
 
       <p className="mt-12 text-sm text-text-subtle">
         <Link href="/" className="text-accent hover:underline">
-          &larr; Back to In Prose
+          &larr; Back to in prose
         </Link>
       </p>
     </div>

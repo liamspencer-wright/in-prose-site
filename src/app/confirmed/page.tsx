@@ -17,7 +17,7 @@ export default function ConfirmedPage() {
         </p>
         <p className="mt-4">
           <Link href="/" className="text-accent hover:underline">
-            Return to In Prose
+            Return to in prose
           </Link>
         </p>
       </main>

@@ -8,16 +8,16 @@ export default function HomePage() {
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
-        strategy="lazyOnload"
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+        strategy="afterInteractive"
       />
 
       <div className="flex min-h-svh flex-col">
         <NavBar />
 
         {/* Hero */}
-        <section className="flex flex-col items-center px-4 pt-12 pb-16 text-center max-sm:pt-8 max-sm:pb-12">
-          <div className="flex w-full max-w-[520px] flex-col items-center justify-center rounded-(--radius-card) bg-accent p-12 shadow-[0_4px_16px_rgba(255,127,50,0.25)] max-sm:rounded-xl max-sm:p-8">
+        <section className="flex flex-col items-center pt-12 pb-16 text-center max-sm:pt-8 max-sm:pb-12">
+          <div className="flex w-full flex-col items-center justify-center bg-accent px-4 py-12 max-sm:py-8">
             <h1 className="text-6xl font-bold lowercase text-black max-sm:text-4xl">
               in prose
             </h1>
@@ -81,7 +81,7 @@ export default function HomePage() {
           <div className="w-full max-w-[480px] rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 text-center shadow-[0_4px_24px_rgba(0,0,0,0.06)] max-sm:p-5">
             <h2 className="mb-2 text-2xl font-bold">Join the beta</h2>
             <p className="mb-6 text-lg text-text-muted">
-              In Prose is in early beta. Sign up to get access.
+              in prose is in early beta. Sign up to get access.
             </p>
             <SignupForm />
           </div>
@@ -116,7 +116,7 @@ export default function HomePage() {
               </Link>
             </div>
             <p className="text-xs text-text-subtle">
-              &copy; {new Date().getFullYear()} In Prose. All rights reserved.
+              &copy; {new Date().getFullYear()} in prose. All rights reserved.
             </p>
           </div>
         </footer>

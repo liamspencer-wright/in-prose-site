@@ -26,7 +26,7 @@ export default function PrivacyPage() {
 
       <div className="space-y-6 leading-relaxed text-text-muted [&_h2]:mb-2 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-text-primary">
         <p>
-          This policy explains how In Prose handles your data during this early
+          This policy explains how in prose handles your data during this early
           testing phase.
         </p>
 
@@ -106,7 +106,7 @@ export default function PrivacyPage() {
 
       <p className="mt-12 text-sm text-text-subtle">
         <Link href="/" className="text-accent hover:underline">
-          &larr; Back to In Prose
+          &larr; Back to in prose
         </Link>
       </p>
     </div>
