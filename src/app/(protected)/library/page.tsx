@@ -3,7 +3,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
-import { NavBar } from "@/components/nav-bar";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -117,10 +116,7 @@ export default function LibraryPage() {
   }, [books]);
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <NavBar />
-
-      <div className="mx-auto w-full max-w-4xl px-6 pt-4 pb-12 max-sm:px-4">
+    <div className="mx-auto w-full max-w-4xl px-6 pt-4 pb-12 max-sm:px-4">
         <h1 className="mb-6 text-3xl font-bold">Your library</h1>
 
         {/* Search */}
@@ -187,7 +183,6 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
-    </div>
   );
 }
 
