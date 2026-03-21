@@ -160,7 +160,7 @@ export default async function PublicProfilePage({ params }: Props) {
               {currentlyReading.map((book) => (
                 <Link
                   key={book.isbn13}
-                  href={`/library/${book.isbn13}`}
+                  href={`/library/${book.isbn13}?from=account`}
                   className="flex w-[280px] flex-shrink-0 snap-center gap-3"
                 >
                   <div className="aspect-[2/3] w-[80px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
@@ -240,7 +240,7 @@ export default async function PublicProfilePage({ params }: Props) {
             {publicBooks.map((book) => (
               <Link
                 key={book.isbn13}
-                href={`/library/${book.isbn13}`}
+                href={`/library/${book.isbn13}?from=account`}
                 className="aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)]"
               >
                 {book.cover_url ? (

@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 
 type BookDetail = {
@@ -57,8 +58,18 @@ const VISIBILITY_OPTIONS = [
 ];
 
 export default function BookDetailPage() {
+  return (
+    <Suspense>
+      <BookDetailContent />
+    </Suspense>
+  );
+}
+
+function BookDetailContent() {
   const params = useParams();
   const isbn = params.isbn as string;
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
   const { user } = useAuth();
   const router = useRouter();
   const supabase = createClient();
@@ -165,10 +176,10 @@ export default function BookDetailPage() {
   return (
     <div className="mx-auto w-full max-w-2xl px-8 pt-6 pb-12 max-sm:px-5">
       <Link
-        href="/library"
+        href={from === "account" ? "/account" : "/library"}
         className="mb-4 inline-block text-sm text-accent hover:underline"
       >
-        &larr; Back to library
+        &larr; Back to {from === "account" ? "account" : "library"}
       </Link>
 
       {/* Book header — cover + title */}
