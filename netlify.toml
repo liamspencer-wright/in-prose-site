@@ -15,6 +15,16 @@
     Content-Type = "application/json"
 
 [[redirects]]
+  from = "/@:username"
+  to = "/u/:username"
+  status = 200
+
+[[redirects]]
+  from = "/@:username/*"
+  to = "/u/:username/:splat"
+  status = 200
+
+[[redirects]]
   from = "http://*"
   to = "https://inprose.co.uk/:splat"
   status = 301

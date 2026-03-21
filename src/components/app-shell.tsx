@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/library", icon: "/icons/library.png", label: "Library" },
   { href: "/friends", icon: "/icons/friends.png", label: "Friends" },
   { href: "/stats", icon: "/icons/charts.png", label: "Stats" },
+  { href: "/account", icon: "/icons/account.png", label: "Account" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -77,21 +78,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Account / logout */}
+        {/* Logout */}
         <div className="border-t border-border px-2 py-3">
           <button
             onClick={signOut}
-            className={`flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-accent transition-colors hover:bg-accent/5 ${
-              expanded ? "" : "justify-center"
-            }`}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-accent opacity-50 transition-colors hover:bg-accent/5 hover:opacity-80"
           >
-            <Image
-              src="/icons/account.png"
-              alt=""
-              width={24}
-              height={24}
-              className="h-6 w-6 flex-shrink-0"
-            />
+            <svg viewBox="0 0 24 24" className="h-6 w-6 flex-shrink-0 fill-current">
+              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
+            </svg>
             {expanded && <span>Log out</span>}
           </button>
         </div>
