@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { NavBar } from "@/components/nav-bar";
-import { BookCard } from "@/components/book-card";
+import Image from "next/image";
+import Link from "next/link";
 
 type StatusFilter = "all" | "to_read" | "reading" | "finished" | "dnf";
 type SortBy = "created_at" | "title" | "first_author_sort_name" | "rating" | "finished_at";
@@ -179,13 +180,43 @@ export default function LibraryPage() {
               : "No books match your filters."}
           </p>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {filtered.map((book) => (
-              <BookCard key={book.isbn13} book={book} />
+              <BookCover key={book.isbn13} book={book} />
             ))}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function BookCover({ book }: { book: LibraryBook }) {
+  return (
+    <Link
+      href={`/library/${book.isbn13}`}
+      className="group aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
+    >
+      {book.cover_url ? (
+        <Image
+          src={book.cover_url}
+          alt={book.title ?? "Book cover"}
+          width={160}
+          height={240}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center bg-bg-medium p-2 text-center">
+          <p className="text-xs font-semibold leading-tight text-text-muted">
+            {book.title ?? "Untitled"}
+          </p>
+          {book.first_author_name && (
+            <p className="mt-1 text-[10px] text-text-subtle">
+              {book.first_author_name}
+            </p>
+          )}
+        </div>
+      )}
+    </Link>
   );
 }
