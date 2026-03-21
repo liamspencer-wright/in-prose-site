@@ -150,30 +150,25 @@ export default async function PublicProfilePage({ params }: Props) {
       {/* Currently reading */}
       {currentlyReading.length > 0 && (
         <section className="mb-8">
-          <div className="overflow-hidden rounded-(--radius-card) bg-[#1a3a5c]">
-            <div className="flex items-center justify-center py-3">
+          <div className="overflow-hidden rounded-(--radius-card) bg-[#1a3a5c] p-4">
+            <div className="mb-3 flex justify-center">
               <span className="rounded-full bg-white/20 px-4 py-1 text-xs font-bold text-white">
                 Currently reading
               </span>
             </div>
-            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-4">
+            <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto">
               {currentlyReading.map((book) => (
-                <div
+                <Link
                   key={book.isbn13}
-                  className="flex w-[280px] flex-shrink-0 snap-center gap-3 rounded-xl bg-white/10 p-3"
+                  href={`/u/${profile.username}/book/${book.isbn13}`}
+                  className="flex w-[280px] flex-shrink-0 snap-center gap-3"
                 >
-                  <div className="h-[90px] w-[60px] flex-shrink-0 overflow-hidden rounded-lg">
+                  <div className="aspect-[2/3] w-[80px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
                     {book.cover_url ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={book.cover_url}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={book.cover_url} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center bg-white/10 text-[8px] text-white/50">
-                        No cover
-                      </div>
+                      <div className="flex h-full w-full items-center justify-center bg-white/10 text-[8px] text-white/50">No cover</div>
                     )}
                   </div>
                   <div className="flex min-w-0 flex-col justify-center">
@@ -181,21 +176,16 @@ export default async function PublicProfilePage({ params }: Props) {
                       {book.title ?? "Untitled"}
                     </p>
                     {book.first_author_name && (
-                      <p className="mt-0.5 text-xs text-white/60">
-                        {book.first_author_name}
-                      </p>
+                      <p className="mt-0.5 text-xs text-white/60">{book.first_author_name}</p>
                     )}
                     {book.started_at && (
                       <p className="mt-1 text-[10px] text-white/40">
                         Started{" "}
-                        {new Date(book.started_at).toLocaleDateString("en-GB", {
-                          day: "numeric",
-                          month: "short",
-                        })}
+                        {new Date(book.started_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
                       </p>
                     )}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
@@ -211,35 +201,23 @@ export default async function PublicProfilePage({ params }: Props) {
                 Favourites
               </span>
             </div>
-            <div className="flex justify-center gap-3">
-              {Array.from({ length: 5 }, (_, i) => {
-                const fav = favourites.find((f) => f.position === i + 1);
-                return (
-                  <div
-                    key={i}
-                    className="h-[90px] w-[60px] overflow-hidden rounded-lg"
-                  >
-                    {fav?.cover_url ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={fav.cover_url}
-                        alt={fav.title ?? ""}
-                        className="h-full w-full object-cover shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
-                      />
-                    ) : fav ? (
-                      <div className="flex h-full w-full items-center justify-center bg-white p-1 text-center text-[8px] text-text-subtle shadow-[0_1px_4px_rgba(0,0,0,0.1)]">
-                        {fav.title}
-                      </div>
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center rounded-lg border-2 border-dashed border-[#1a3a5c]/20">
-                        <span className="text-lg text-[#1a3a5c]/20">
-                          {i + 1}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+            <div className="flex justify-center gap-2">
+              {favourites.map((fav) => (
+                <Link
+                  key={fav.isbn13}
+                  href={`/u/${profile.username}/book/${fav.isbn13}`}
+                  className="aspect-[2/3] w-[calc((100%-2rem)/5)] max-w-[100px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
+                >
+                  {fav.cover_url ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img src={fav.cover_url} alt={fav.title ?? ""} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-white p-1 text-center text-[8px] text-text-subtle">
+                      {fav.title}
+                    </div>
+                  )}
+                </Link>
+              ))}
             </div>
           </div>
         </section>
@@ -260,25 +238,20 @@ export default async function PublicProfilePage({ params }: Props) {
         ) : (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
             {publicBooks.map((book) => (
-              <div
+              <Link
                 key={book.isbn13}
+                href={`/u/${profile.username}/book/${book.isbn13}`}
                 className="aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)]"
               >
                 {book.cover_url ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={book.cover_url}
-                    alt={book.title ?? ""}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={book.cover_url} alt={book.title ?? ""} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full flex-col items-center justify-center bg-bg-medium p-2 text-center">
-                    <p className="text-xs font-semibold leading-tight text-text-muted">
-                      {book.title ?? "Untitled"}
-                    </p>
+                    <p className="text-xs font-semibold leading-tight text-text-muted">{book.title ?? "Untitled"}</p>
                   </div>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
         )}
