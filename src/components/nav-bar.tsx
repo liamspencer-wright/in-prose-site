@@ -49,6 +49,7 @@ function UserInfo({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<{
     display_name: string | null;
     username: string | null;
+    avatar_url: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ function UserInfo({ userId }: { userId: string }) {
       const supabase = createClient();
       const { data } = await supabase
         .from("profiles")
-        .select("display_name, username")
+        .select("display_name, username, avatar_url")
         .eq("id", userId)
         .maybeSingle();
       if (data) setProfile(data);
@@ -68,13 +69,28 @@ function UserInfo({ userId }: { userId: string }) {
   if (!profile) return null;
 
   return (
-    <div className="text-right text-sm max-sm:hidden">
-      {profile.display_name && (
-        <p className="font-semibold leading-tight">{profile.display_name}</p>
+    <div className="flex items-center gap-3 max-sm:hidden">
+      {profile.avatar_url ? (
+        <Image
+          src={profile.avatar_url}
+          alt=""
+          width={36}
+          height={36}
+          className="h-9 w-9 rounded-full object-cover"
+        />
+      ) : (
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
+          {(profile.display_name ?? "?").charAt(0).toUpperCase()}
+        </div>
       )}
-      {profile.username && (
-        <p className="leading-tight text-text-muted">@{profile.username}</p>
-      )}
+      <div className="text-right text-sm">
+        {profile.display_name && (
+          <p className="font-semibold leading-tight">{profile.display_name}</p>
+        )}
+        {profile.username && (
+          <p className="leading-tight text-text-muted">@{profile.username}</p>
+        )}
+      </div>
     </div>
   );
 }
