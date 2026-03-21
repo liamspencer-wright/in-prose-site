@@ -1,7 +1,15 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Rewrite /@username to /u/username
+  const match = request.nextUrl.pathname.match(/^\/@([^/]+)(\/.*)?$/);
+  if (match) {
+    const url = request.nextUrl.clone();
+    url.pathname = `/u/${match[1]}${match[2] ?? ""}`;
+    return NextResponse.rewrite(url);
+  }
+
   return await updateSession(request);
 }
 
