@@ -11,9 +11,32 @@ const crimsonText = Crimson_Text({
 });
 
 export const metadata: Metadata = {
-  title: "in prose – Books and data — perfectly bound.",
+  title: {
+    default: "in prose – Books and data — perfectly bound.",
+    template: "%s – In Prose",
+  },
   description:
-    "Track your reading, connect with friends, and discover books with In Prose.",
+    "Track what you read, see how your friends read, and discover your next favourite book. In Prose is a social book tracking app.",
+  metadataBase: new URL("https://inprose.co.uk"),
+  openGraph: {
+    title: "in prose – Books and data — perfectly bound.",
+    description:
+      "Track what you read, see how your friends read, and discover your next favourite book.",
+    url: "https://inprose.co.uk",
+    siteName: "In Prose",
+    locale: "en_GB",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "in prose – Books and data — perfectly bound.",
+    description:
+      "Track what you read, see how your friends read, and discover your next favourite book.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
