@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Crimson_Text } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
+import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -49,7 +50,9 @@ export default function RootLayout({
       <body
         className={`${crimsonText.variable} font-serif bg-bg-light text-text-primary antialiased`}
       >
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

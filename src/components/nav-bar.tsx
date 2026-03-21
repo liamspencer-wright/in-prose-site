@@ -8,6 +8,9 @@ import { useAuth } from "./auth-provider";
 export function NavBar() {
   const { user, loading, signOut } = useAuth();
 
+  // Sidebar handles navigation when logged in
+  if (user) return null;
+
   return (
     <nav className="flex items-center justify-between px-6 py-4 max-sm:px-4">
       <Link href="/">

@@ -84,7 +84,7 @@ export default function BookDetailPage() {
     if (!user) return;
 
     async function load() {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_books_expanded")
         .select("*")
         .eq("isbn13", isbn)
@@ -160,7 +160,7 @@ export default function BookDetailPage() {
     );
   }
 
-  const coverSrc = book.image_original || book.cover_url;
+  const coverSrc = book.cover_url || book.image_original;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 pt-4 pb-12 max-sm:px-4">
