@@ -1,0 +1,374 @@
+import { createClient } from "@/lib/supabase/server";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import Link from "next/link";
+
+export const revalidate = 300; // 5 minutes
+
+type Props = {
+  params: Promise<{ isbn: string }>;
+  searchParams: Promise<{ shared_by?: string }>;
+};
+
+type BookData = {
+  isbn13: string;
+  title: string | null;
+  subtitle: string | null;
+  authors: string[] | null;
+  first_author_name: string | null;
+  publisher: string | null;
+  pages: number | null;
+  pub_year: number | null;
+  synopsis: string | null;
+  image: string | null;
+  image_original: string | null;
+  genres: string[] | null;
+  community_rating: number | null;
+  ratings_count: number | null;
+};
+
+type SharerInfo = {
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  rating: number | null;
+  review: string | null;
+  status: string | null;
+};
+
+// ── Metadata (OG tags for link previews) ──
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { isbn } = await params;
+  const book = (await fetchBook(isbn)) ?? (await fetchFromISBNdb(isbn));
+
+  if (!book) return { title: "Book not found" };
+
+  const authorText = book.authors?.length
+    ? ` by ${book.authors.join(", ")}`
+    : "";
+  const title = `${book.title ?? "Untitled"}${authorText}`;
+  const description = book.synopsis
+    ? stripHtml(book.synopsis).slice(0, 200)
+    : `View ${book.title ?? "this book"} on in prose.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "book",
+      ...(book.image && {
+        images: [{ url: book.image, width: 300, height: 450 }],
+      }),
+    },
+    twitter: {
+      card: book.image ? "summary_large_image" : "summary",
+      title,
+      description,
+    },
+  };
+}
+
+// ── Page ──
+
+export default async function PublicBookPage({ params, searchParams }: Props) {
+  const { isbn } = await params;
+  const { shared_by } = await searchParams;
+
+  let book = await fetchBook(isbn);
+
+  // If not in DB, try fetching from ISBNdb
+  if (!book) {
+    book = await fetchFromISBNdb(isbn);
+  }
+
+  if (!book) notFound();
+
+  // Fetch sharer info if shared_by is provided
+  let sharer: SharerInfo | null = null;
+  if (shared_by) {
+    sharer = await fetchSharerInfo(isbn, shared_by);
+  }
+
+  const coverSrc = book.image || book.image_original;
+
+  return (
+    <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
+      {/* Book header */}
+      <div className="mb-8 flex gap-6 max-sm:flex-col max-sm:items-center">
+        <div className="h-[240px] w-[160px] flex-shrink-0 overflow-hidden rounded-xl bg-bg-medium shadow-[0_4px_20px_rgba(0,0,0,0.15)]">
+          {coverSrc ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={coverSrc}
+              alt={book.title ?? "Book cover"}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-sm text-text-subtle">
+              No cover
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col justify-center max-sm:text-center">
+          <h1 className="text-2xl font-bold leading-tight">
+            {book.title ?? "Untitled"}
+          </h1>
+          {book.subtitle && (
+            <p className="mt-1 text-lg text-text-muted">{book.subtitle}</p>
+          )}
+          {book.authors && book.authors.length > 0 && (
+            <p className="mt-2 text-text-muted">
+              {book.authors.join(", ")}
+            </p>
+          )}
+          <div className="mt-3 flex flex-wrap gap-3 text-sm text-text-subtle max-sm:justify-center">
+            {book.pub_year && <span>{book.pub_year}</span>}
+            {book.publisher && <span>&middot; {book.publisher}</span>}
+            {book.pages && <span>&middot; {book.pages} pages</span>}
+          </div>
+
+          {/* Community stats */}
+          {(book.community_rating !== null || book.ratings_count !== null) && (
+            <div className="mt-4 flex gap-4 max-sm:justify-center">
+              {book.community_rating !== null && (
+                <div className="rounded-(--radius-input) bg-bg-medium px-3 py-1.5 text-center">
+                  <p className="text-lg font-bold text-accent">
+                    {book.community_rating.toFixed(1)}
+                  </p>
+                  <p className="text-xs text-text-subtle">avg rating</p>
+                </div>
+              )}
+              {book.ratings_count !== null && book.ratings_count > 0 && (
+                <div className="rounded-(--radius-input) bg-bg-medium px-3 py-1.5 text-center">
+                  <p className="text-lg font-bold">
+                    {book.ratings_count}
+                  </p>
+                  <p className="text-xs text-text-subtle">
+                    {book.ratings_count === 1 ? "rating" : "ratings"}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sharer context */}
+      {sharer && (
+        <section className="mb-8 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-5">
+          <div className="flex items-start gap-3">
+            {sharer.avatar_url ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={sharer.avatar_url}
+                alt=""
+                className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
+                {(sharer.display_name ?? "?").charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">
+                {sharer.display_name ?? "A reader"}
+                {sharer.username && (
+                  <Link
+                    href={`/u/${sharer.username}`}
+                    className="ml-1 text-sm font-normal text-text-muted hover:text-accent"
+                  >
+                    @{sharer.username}
+                  </Link>
+                )}
+              </p>
+              <div className="mt-0.5 flex items-center gap-2 text-sm text-text-muted">
+                {sharer.status && (
+                  <span className="capitalize">
+                    {sharer.status.replace("_", " ")}
+                  </span>
+                )}
+                {sharer.rating !== null && sharer.rating > 0 && (
+                  <span>&middot; Rated {sharer.rating}/10</span>
+                )}
+              </div>
+              {sharer.review && (
+                <p className="mt-2 text-sm leading-relaxed text-text-muted">
+                  &ldquo;{sharer.review}&rdquo;
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Synopsis */}
+      {book.synopsis && (
+        <section className="mb-8">
+          <h2 className="mb-2 text-lg font-bold">Synopsis</h2>
+          <div
+            className="leading-relaxed text-text-muted [&_b]:font-semibold [&_i]:italic [&_p]:mb-2"
+            dangerouslySetInnerHTML={{ __html: sanitiseHtml(book.synopsis) }}
+          />
+        </section>
+      )}
+
+      {/* Genres */}
+      {book.genres && book.genres.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-2 text-sm font-semibold text-text-subtle">
+            Genres
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {book.genres.map((g) => (
+              <span
+                key={g}
+                className="rounded-full bg-bg-medium px-3 py-1 text-xs text-text-muted"
+              >
+                {g}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* CTA */}
+      <section className="mt-10 rounded-(--radius-card) border border-border bg-bg-medium p-6 text-center">
+        <p className="text-lg font-bold">Track your reading with in prose</p>
+        <p className="mt-1 text-sm text-text-muted">
+          Add books, rate them, and see what your friends are reading.
+        </p>
+        <div className="mt-4 flex justify-center gap-3">
+          <Link
+            href="/"
+            className="rounded-(--radius-input) bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-88"
+          >
+            Learn more
+          </Link>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <p className="mt-12 text-center text-sm text-text-subtle">
+        <Link href="/" className="text-accent hover:underline">
+          in prose — Books and data, perfectly bound.
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+// ── Data fetching ──
+
+async function fetchBook(isbn: string): Promise<BookData | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("books_expanded")
+    .select(
+      "isbn13, title, subtitle, authors, first_author_name, publisher, pages, pub_year, synopsis, image, image_original, genres, community_rating, ratings_count"
+    )
+    .eq("isbn13", isbn)
+    .maybeSingle();
+
+  return data as BookData | null;
+}
+
+async function fetchFromISBNdb(isbn: string): Promise<BookData | null> {
+  const apiKey = process.env.ISBNDB_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const res = await fetch(`https://api2.isbndb.com/book/${isbn}`, {
+      headers: { Authorization: apiKey, "x-api-key": apiKey },
+      signal: AbortSignal.timeout(8000),
+      next: { revalidate: 300 },
+    });
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const b = data.book;
+    if (!b) return null;
+
+    const image =
+      b.image && b.image.length > 0
+        ? b.image
+        : `https://images.isbndb.com/covers/${isbn}.jpg`;
+
+    const datePublished = b.date_published as string | undefined;
+    const pubYear = datePublished
+      ? parseInt(datePublished.slice(0, 4)) || null
+      : null;
+
+    return {
+      isbn13: isbn,
+      title: b.title ?? null,
+      subtitle: b.subtitle ?? null,
+      authors: b.authors ?? null,
+      first_author_name: b.authors?.[0] ?? null,
+      publisher: b.publisher ?? null,
+      pages: typeof b.pages === "number" ? b.pages : null,
+      pub_year: pubYear,
+      synopsis: b.synopsis ?? null,
+      image,
+      image_original: null,
+      genres: b.subjects ?? null,
+      community_rating: null,
+      ratings_count: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchSharerInfo(
+  isbn: string,
+  userId: string
+): Promise<SharerInfo | null> {
+  const supabase = await createClient();
+
+  // Get user's book entry (only if public visibility)
+  const { data: userBook } = await supabase
+    .from("user_books_expanded_all")
+    .select(
+      "rating, review, status, visibility, user_id"
+    )
+    .eq("isbn13", isbn)
+    .eq("user_id", userId)
+    .eq("visibility", "public")
+    .maybeSingle();
+
+  if (!userBook) return null;
+
+  // Get sharer's profile
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("display_name, username, avatar_url")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (!profile) return null;
+
+  return {
+    display_name: profile.display_name,
+    username: profile.username,
+    avatar_url: profile.avatar_url,
+    rating: userBook.rating as number | null,
+    review: userBook.review as string | null,
+    status: userBook.status as string | null,
+  };
+}
+
+// ── Helpers ──
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "").trim();
+}
+
+function sanitiseHtml(html: string): string {
+  return html
+    .replace(/<(?!\/?(?:p|b|i|em|strong|br|ul|ol|li)\b)[^>]*>/gi, "")
+    .replace(/on\w+="[^"]*"/gi, "");
+}
