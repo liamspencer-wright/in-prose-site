@@ -8,7 +8,7 @@ import { useAuth } from "./auth-provider";
 
 const NAV_ITEMS = [
   { href: "/", icon: "/icons/home.png", label: "Home" },
-  { href: "/search", icon: null, label: "Search" },
+  { href: "/search", icon: "/icons/search.png", label: "Search" },
   { href: "/library", icon: "/icons/library.png", label: "Library" },
   { href: "/friends", icon: "/icons/friends.png", label: "Friends" },
   { href: "/stats", icon: "/icons/charts.png", label: "Stats" },
@@ -64,19 +64,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     : "opacity-50 hover:bg-accent/5 hover:opacity-80"
                 }`}
               >
-                {item.icon ? (
-                  <Image
-                    src={item.icon}
-                    alt=""
-                    width={24}
-                    height={24}
-                    className="h-6 w-6 flex-shrink-0"
-                  />
-                ) : (
-                  <svg viewBox="0 0 24 24" className="h-6 w-6 flex-shrink-0 fill-current">
-                    <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" />
-                  </svg>
-                )}
+                <Image
+                  src={item.icon}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 flex-shrink-0"
+                />
                 {expanded && (
                   <span className="text-sm font-semibold">{item.label}</span>
                 )}

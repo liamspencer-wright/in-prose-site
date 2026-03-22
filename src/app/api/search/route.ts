@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const ISBNDB_BASE = "https://api2.isbndb.com";
-const OPENLIBRARY_SEARCH = "https://openlibrary.org/search.json";
 
 type SearchResult = {
   isbn13: string;
@@ -28,15 +27,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Try ISBNdb first
-  const isbndbResults = await searchISBNdb(q, apiKey);
-  if (isbndbResults.length > 0) {
-    return NextResponse.json({ results: isbndbResults });
-  }
-
-  // Fallback to OpenLibrary
-  const olResults = await searchOpenLibrary(q);
-  return NextResponse.json({ results: olResults });
+  const results = await searchISBNdb(q, apiKey);
+  return NextResponse.json({ results });
 }
 
 async function searchISBNdb(
@@ -89,53 +81,6 @@ async function searchISBNdb(
         publisher: (book.publisher as string) ?? null,
         pages: typeof book.pages === "number" ? book.pages : null,
         synopsis: (book.synopsis as string) ?? null,
-      };
-    });
-
-    return mapped.filter((r): r is SearchResult => r !== null);
-  } catch {
-    return [];
-  }
-}
-
-async function searchOpenLibrary(query: string): Promise<SearchResult[]> {
-  try {
-    const url = new URL(OPENLIBRARY_SEARCH);
-    url.searchParams.set("q", query);
-    url.searchParams.set("limit", "20");
-    url.searchParams.set("fields", "isbn,title,author_name,first_publish_year,publisher,cover_i,number_of_pages_median");
-
-    const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!res.ok) return [];
-
-    const data = await res.json();
-    const docs: unknown[] = data.docs ?? [];
-
-    const mapped: (SearchResult | null)[] = docs.map((d: unknown) => {
-      const doc = d as Record<string, unknown>;
-      const isbns = (doc.isbn as string[]) ?? [];
-      const isbn13 = isbns.find(
-        (i) => i.length === 13 && i.startsWith("978")
-      );
-      if (!isbn13) return null;
-
-      const coverId = doc.cover_i as number | undefined;
-      const coverUrl = coverId
-        ? `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`
-        : null;
-
-      return {
-        isbn13,
-        title: (doc.title as string) ?? "Untitled",
-        authors: (doc.author_name as string[]) ?? [],
-        coverUrl,
-        pubYear: (doc.first_publish_year as number) ?? null,
-        publisher: ((doc.publisher as string[]) ?? [])[0] ?? null,
-        pages: (doc.number_of_pages_median as number) ?? null,
-        synopsis: null,
       };
     });
 

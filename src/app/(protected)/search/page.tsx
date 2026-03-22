@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 type SearchResult = {
   isbn13: string;
@@ -79,7 +80,9 @@ export default function SearchPage() {
   }, [query]);
 
   const addToLibrary = useCallback(
-    async (book: SearchResult) => {
+    async (e: React.MouseEvent, book: SearchResult) => {
+      e.preventDefault();
+      e.stopPropagation();
       if (!user) return;
       setAddingIsbn(book.isbn13);
 
@@ -131,77 +134,15 @@ export default function SearchPage() {
         <p className="py-12 text-center text-text-muted">Searching...</p>
       ) : results.length > 0 ? (
         <div className="space-y-3">
-          {results.map((book) => {
-            const inLibrary = libraryIsbns.has(book.isbn13);
-            return (
-              <div
-                key={book.isbn13}
-                className="flex gap-4 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4"
-              >
-                {/* Cover */}
-                <div className="h-[120px] w-[80px] flex-shrink-0 overflow-hidden rounded-lg bg-bg-light shadow-[0_1px_4px_rgba(0,0,0,0.12)]">
-                  {book.coverUrl ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={book.coverUrl}
-                      alt={book.title}
-                      className="h-full w-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
-                        (
-                          e.target as HTMLImageElement
-                        ).nextElementSibling?.classList.remove("hidden");
-                      }}
-                    />
-                  ) : null}
-                  <div
-                    className={`flex h-full w-full items-center justify-center text-xs text-text-subtle ${book.coverUrl ? "hidden" : ""}`}
-                  >
-                    No cover
-                  </div>
-                </div>
-
-                {/* Info */}
-                <div className="flex min-w-0 flex-1 flex-col justify-between">
-                  <div>
-                    <h3 className="line-clamp-2 font-semibold leading-tight">
-                      {book.title}
-                    </h3>
-                    {book.authors.length > 0 && (
-                      <p className="mt-0.5 text-sm text-text-muted">
-                        {book.authors.join(", ")}
-                      </p>
-                    )}
-                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-text-subtle">
-                      {book.pubYear && <span>{book.pubYear}</span>}
-                      {book.publisher && (
-                        <span>&middot; {book.publisher}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Action */}
-                  <div className="mt-2">
-                    {inLibrary ? (
-                      <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                        In library
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => addToLibrary(book)}
-                        disabled={addingIsbn === book.isbn13}
-                        className="cursor-pointer rounded-(--radius-input) bg-accent px-4 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
-                      >
-                        {addingIsbn === book.isbn13
-                          ? "Adding..."
-                          : "Add to library"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {results.map((book) => (
+            <SearchResultCard
+              key={book.isbn13}
+              book={book}
+              inLibrary={libraryIsbns.has(book.isbn13)}
+              adding={addingIsbn === book.isbn13}
+              onAdd={addToLibrary}
+            />
+          ))}
         </div>
       ) : searched ? (
         <p className="py-12 text-center text-text-muted">
@@ -215,4 +156,110 @@ export default function SearchPage() {
       )}
     </div>
   );
+}
+
+function SearchResultCard({
+  book,
+  inLibrary,
+  adding,
+  onAdd,
+}: {
+  book: SearchResult;
+  inLibrary: boolean;
+  adding: boolean;
+  onAdd: (e: React.MouseEvent, book: SearchResult) => void;
+}) {
+  const href = inLibrary
+    ? `/library/${book.isbn13}?from=search`
+    : undefined;
+
+  const content = (
+    <>
+      {/* Cover */}
+      <div className="h-[120px] w-[80px] flex-shrink-0 overflow-hidden rounded-lg bg-bg-light shadow-[0_1px_4px_rgba(0,0,0,0.12)]">
+        {book.coverUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={book.coverUrl}
+            alt={book.title}
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+              (
+                e.target as HTMLImageElement
+              ).nextElementSibling?.classList.remove("hidden");
+            }}
+          />
+        ) : null}
+        <div
+          className={`flex h-full w-full items-center justify-center text-xs text-text-subtle ${book.coverUrl ? "hidden" : ""}`}
+        >
+          No cover
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="flex min-w-0 flex-1 flex-col justify-between">
+        <div>
+          <h3 className="line-clamp-2 font-semibold leading-tight">
+            {book.title}
+          </h3>
+          {book.authors.length > 0 && (
+            <p className="mt-0.5 text-sm text-text-muted">
+              {book.authors.join(", ")}
+            </p>
+          )}
+          <div className="mt-1 flex flex-wrap gap-2 text-xs text-text-subtle">
+            {book.pubYear && <span>{book.pubYear}</span>}
+            {book.publisher && <span>&middot; {book.publisher}</span>}
+            {book.pages && <span>&middot; {book.pages} pages</span>}
+          </div>
+        </div>
+
+        {/* Action */}
+        <div className="mt-2">
+          {inLibrary ? (
+            <span className="inline-block rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+              In library
+            </span>
+          ) : (
+            <button
+              onClick={(e) => onAdd(e, book)}
+              disabled={adding}
+              className="cursor-pointer rounded-(--radius-input) bg-accent px-4 py-1.5 text-sm font-semibold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+            >
+              {adding ? "Adding..." : "Add to library"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Hover preview — synopsis */}
+      {book.synopsis && (
+        <div className="pointer-events-none absolute top-full right-0 left-0 z-10 mt-1 hidden rounded-(--radius-card) border border-border bg-bg-light p-4 shadow-[0_4px_20px_rgba(0,0,0,0.12)] group-hover:block">
+          <p className="text-xs font-semibold text-text-subtle">Synopsis</p>
+          <p className="mt-1 line-clamp-4 text-sm leading-relaxed text-text-muted">
+            {stripHtml(book.synopsis)}
+          </p>
+        </div>
+      )}
+    </>
+  );
+
+  const className =
+    "group relative flex gap-4 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]";
+
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+
+  return <div className={className}>{content}</div>;
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, "").trim();
 }
