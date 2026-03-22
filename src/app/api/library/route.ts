@@ -28,7 +28,6 @@ export async function POST(request: NextRequest) {
       image: coverUrl ?? null,
       pages: pages ?? null,
       date_published: pubYear ? String(pubYear) : null,
-      pub_year: pubYear ?? null,
       synopsis: synopsis ?? null,
     },
     { onConflict: "isbn13", ignoreDuplicates: true }
