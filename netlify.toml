@@ -2,6 +2,22 @@
   command = "npm run build"
   publish = ".next"
 
+# Only auto-deploy from main (production).
+# Daily development happens on `dev`; merge to main when ready to deploy.
+[build.environment]
+  NODE_VERSION = "20"
+
+[context.production]
+  command = "npm run build"
+
+# Enable deploy previews for pull requests
+[context.deploy-preview]
+  command = "npm run build"
+
+# Disable automatic branch deploys (only main + PR previews)
+[context.branch-deploy]
+  command = "echo 'Branch deploys disabled' && exit 1"
+
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
