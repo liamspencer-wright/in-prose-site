@@ -171,7 +171,7 @@ function SearchResultCard({
 }) {
   const href = inLibrary
     ? `/library/${book.isbn13}?from=search`
-    : undefined;
+    : `/book/${book.isbn13}`;
 
   const content = (
     <>
@@ -213,6 +213,7 @@ function SearchResultCard({
             {book.pubYear && <span>{book.pubYear}</span>}
             {book.publisher && <span>&middot; {book.publisher}</span>}
             {book.pages && <span>&middot; {book.pages} pages</span>}
+            <span>&middot; {book.isbn13}</span>
           </div>
         </div>
 
@@ -246,18 +247,14 @@ function SearchResultCard({
     </>
   );
 
-  const className =
-    "group relative flex gap-4 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]";
-
-  if (href) {
-    return (
-      <Link href={href} className={className}>
-        {content}
-      </Link>
-    );
-  }
-
-  return <div className={className}>{content}</div>;
+  return (
+    <Link
+      href={href}
+      className="group relative flex gap-4 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)]"
+    >
+      {content}
+    </Link>
+  );
 }
 
 function stripHtml(html: string): string {

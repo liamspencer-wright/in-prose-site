@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BookEditWrapper } from "@/components/book-edit-wrapper";
 
 export const revalidate = 300; // 5 minutes
 
@@ -234,21 +235,19 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
         </section>
       )}
 
-      {/* CTA */}
-      <section className="mt-10 rounded-(--radius-card) border border-border bg-bg-medium p-6 text-center">
-        <p className="text-lg font-bold">Track your reading with in prose</p>
-        <p className="mt-1 text-sm text-text-muted">
-          Add books, rate them, and see what your friends are reading.
-        </p>
-        <div className="mt-4 flex justify-center gap-3">
-          <Link
-            href="/"
-            className="rounded-(--radius-input) bg-accent px-6 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-88"
-          >
-            Learn more
-          </Link>
-        </div>
-      </section>
+      {/* Edit controls for logged-in users, CTA for guests */}
+      <BookEditWrapper
+        isbn={book.isbn13}
+        bookMeta={{
+          title: book.title ?? "Untitled",
+          authors: book.authors ?? [],
+          publisher: book.publisher,
+          coverUrl: book.image,
+          pages: book.pages,
+          pubYear: book.pub_year,
+          synopsis: book.synopsis,
+        }}
+      />
 
       {/* Footer */}
       <p className="mt-12 text-center text-sm text-text-subtle">

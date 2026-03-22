@@ -57,13 +57,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 3. Insert user_books record
+  // 3. Insert user_books record (accept optional fields for edit-on-add flow)
   const { error: linkError } = await supabase.from("user_books").insert({
     user_id: user.id,
     isbn13,
-    status: "to_read",
-    ownership: "not_owned",
-    visibility: "public",
+    status: body.status ?? "to_read",
+    ownership: body.ownership ?? "not_owned",
+    visibility: body.visibility ?? "public",
+    rating: body.rating ?? null,
+    review: body.review ?? null,
+    started_at: body.started_at ?? null,
+    finished_at: body.finished_at ?? null,
   });
 
   if (linkError) {
