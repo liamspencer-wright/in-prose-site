@@ -176,10 +176,10 @@ function BookDetailContent() {
   return (
     <div className="mx-auto w-full max-w-2xl px-8 pt-6 pb-12 max-sm:px-5">
       <Link
-        href={from === "account" ? "/account" : "/library"}
+        href={from === "account" ? "/account" : from === "search" ? "/search" : "/library"}
         className="mb-4 inline-block text-sm text-accent hover:underline"
       >
-        &larr; Back to {from === "account" ? "account" : "library"}
+        &larr; Back to {from === "account" ? "account" : from === "search" ? "search" : "library"}
       </Link>
 
       {/* Book header — cover + title */}
