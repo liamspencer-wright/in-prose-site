@@ -83,41 +83,33 @@ export default function SearchPage() {
       if (!user) return;
       setAddingIsbn(book.isbn13);
 
-      try {
-        // 1. Upsert book + authors via RPC
-        await supabase.rpc("upsert_book_and_authors", {
-          p_isbn13: book.isbn13,
-          p_title: book.title,
-          p_title_long: null,
-          p_subtitle: null,
-          p_authors: book.authors,
-          p_publisher: book.publisher,
-          p_language: null,
-          p_image: book.coverUrl,
-          p_pages: book.pages,
-          p_date_published: null,
-          p_pub_year: book.pubYear,
-          p_synopsis: book.synopsis,
-        });
-
-        // 2. Insert user_books record
-        await supabase.from("user_books").insert({
-          user_id: user.id,
+      const res = await fetch("/api/library", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           isbn13: book.isbn13,
-          status: "to_read",
-          ownership: "not_owned",
-          visibility: "public",
-        });
+          title: book.title,
+          authors: book.authors,
+          publisher: book.publisher,
+          coverUrl: book.coverUrl,
+          pages: book.pages,
+          pubYear: book.pubYear,
+          synopsis: book.synopsis,
+        }),
+      });
 
-        // 3. Update local state and navigate
-        setLibraryIsbns((prev) => new Set([...prev, book.isbn13]));
-        router.push(`/library/${book.isbn13}?from=search`);
-      } catch (err) {
-        console.error("Failed to add book:", err);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        console.error("Add to library failed:", data.error);
         setAddingIsbn(null);
+        return;
       }
+
+      // Update local state and navigate
+      setLibraryIsbns((prev) => new Set([...prev, book.isbn13]));
+      router.push(`/library/${book.isbn13}?from=search`);
     },
-    [user, supabase, router]
+    [user, router]
   );
 
   return (
