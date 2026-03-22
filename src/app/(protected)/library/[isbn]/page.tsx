@@ -366,12 +366,12 @@ function EditTab({
     <div className="space-y-6">
       {/* Status */}
       <FieldGroup label="Status">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setStatus(opt.value)}
-              className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+              className={`cursor-pointer rounded-full py-1.5 text-center text-sm font-semibold transition-colors ${
                 status === opt.value
                   ? "bg-accent text-white"
                   : "bg-bg-medium text-text-muted hover:bg-accent/10"
@@ -381,38 +381,6 @@ function EditTab({
             </button>
           ))}
         </div>
-      </FieldGroup>
-
-      {/* Rating */}
-      <FieldGroup label="Rating">
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min="0"
-            max="10"
-            step="1"
-            value={rating ?? 0}
-            onChange={(e) => {
-              const v = parseInt(e.target.value);
-              setRating(v === 0 ? null : v);
-            }}
-            className="flex-1 accent-accent"
-          />
-          <span className="w-12 text-center text-lg font-semibold">
-            {rating ?? "—"}/10
-          </span>
-        </div>
-      </FieldGroup>
-
-      {/* Review */}
-      <FieldGroup label="Review">
-        <textarea
-          value={review}
-          onChange={(e) => setReview(e.target.value)}
-          placeholder="Write your thoughts..."
-          rows={4}
-          className="w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
-        />
       </FieldGroup>
 
       {/* Ownership & Visibility */}
@@ -441,25 +409,64 @@ function EditTab({
         </FieldGroup>
       </div>
 
-      {/* Dates */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FieldGroup label="Started">
-          <input
-            type="date"
-            value={startedAt}
-            onChange={(e) => setStartedAt(e.target.value)}
-            className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
-          />
-        </FieldGroup>
-        <FieldGroup label="Finished">
-          <input
-            type="date"
-            value={finishedAt}
-            onChange={(e) => setFinishedAt(e.target.value)}
-            className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
-          />
-        </FieldGroup>
-      </div>
+      {/* Dates — reading: start only; finished/dnf: both */}
+      {status !== "to_read" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FieldGroup label="Started">
+            <input
+              type="date"
+              value={startedAt}
+              onChange={(e) => setStartedAt(e.target.value)}
+              className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
+            />
+          </FieldGroup>
+          {(status === "finished" || status === "dnf") && (
+            <FieldGroup label="Finished">
+              <input
+                type="date"
+                value={finishedAt}
+                onChange={(e) => setFinishedAt(e.target.value)}
+                className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
+              />
+            </FieldGroup>
+          )}
+        </div>
+      )}
+
+      {/* Rating & Review — finished only */}
+      {status === "finished" && (
+        <>
+          <FieldGroup label="Rating">
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={rating ?? 0}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  setRating(v === 0 ? null : v);
+                }}
+                className="flex-1 accent-accent"
+              />
+              <span className="w-12 text-center text-lg font-semibold">
+                {rating ?? "—"}/10
+              </span>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup label="Review">
+            <textarea
+              value={review}
+              onChange={(e) => setReview(e.target.value)}
+              placeholder="Write your thoughts..."
+              rows={4}
+              className="w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
+            />
+          </FieldGroup>
+        </>
+      )}
 
       {/* Save / Delete */}
       <div className="flex items-center gap-4 pt-2">
