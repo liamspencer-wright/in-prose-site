@@ -7,6 +7,7 @@ const PROTECTED_ROUTES = [
   "/friends",
   "/feed",
   "/settings",
+  "/contact",
   "/signup/profile",
 ];
 
