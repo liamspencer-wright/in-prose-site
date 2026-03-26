@@ -48,7 +48,27 @@ export async function updateSession(request: NextRequest) {
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
+    const originalPath = request.nextUrl.pathname;
     url.pathname = "/login";
+    url.searchParams.set("next", originalPath);
+
+    // Add contextual message based on the route
+    const messages: Record<string, string> = {
+      "/library": "Log in to access your library",
+      "/search": "Log in to search and add books",
+      "/friends": "Log in to see your friends",
+      "/feed": "Log in to view your feed",
+      "/settings": "Log in to access settings",
+      "/contact": "Log in to contact us",
+      "/account": "Log in to access your account",
+    };
+    const message = Object.entries(messages).find(([route]) =>
+      originalPath.startsWith(route)
+    )?.[1];
+    if (message) {
+      url.searchParams.set("message", message);
+    }
+
     return NextResponse.redirect(url);
   }
 

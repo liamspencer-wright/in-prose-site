@@ -23,6 +23,8 @@ function LoginForm() {
   const searchParams = useSearchParams();
 
   const callbackError = searchParams.get("error");
+  const nextPath = searchParams.get("next");
+  const contextMessage = searchParams.get("message");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +53,12 @@ function LoginForm() {
       return;
     }
 
-    router.push("/");
+    // Redirect to the original page, or home. Only allow relative paths.
+    const destination =
+      nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//")
+        ? nextPath
+        : "/";
+    router.push(destination);
     router.refresh();
   }
 
@@ -68,6 +75,12 @@ function LoginForm() {
 
       <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
         <h1 className="mb-6 text-center text-3xl font-bold">Log in</h1>
+
+        {contextMessage && (
+          <p className="mb-4 rounded-(--radius-input) bg-accent/10 p-3 text-center text-sm text-text-muted">
+            {contextMessage}
+          </p>
+        )}
 
         {callbackError && (
           <p className="mb-4 rounded-(--radius-input) bg-error/10 p-3 text-sm text-error">
