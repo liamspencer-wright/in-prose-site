@@ -79,8 +79,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Settings + Logout */}
+        {/* Settings, Contact + Logout */}
         <div className="border-t border-border px-2 py-3">
+          <Link
+            href="/contact"
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+              pathname.startsWith("/contact")
+                ? "bg-accent/15 opacity-100"
+                : "opacity-50 hover:bg-accent/5 hover:opacity-80"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6 flex-shrink-0 fill-current">
+              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+            </svg>
+            {expanded && (
+              <span className="text-sm font-semibold">Contact</span>
+            )}
+          </Link>
           <Link
             href="/settings"
             className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
