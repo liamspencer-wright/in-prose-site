@@ -102,7 +102,7 @@ export function SignupForm() {
   if (state === "success") {
     return (
       <p className="py-2 text-lg leading-relaxed">
-        You&apos;re on the list! We&apos;ll be in touch when beta access opens.
+        You&apos;re on the list! We&apos;ll be in touch when the app is ready for you.
       </p>
     );
   }
@@ -138,7 +138,7 @@ export function SignupForm() {
         disabled={state === "submitting"}
         className="w-full cursor-pointer rounded-(--radius-input) bg-accent px-6 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
       >
-        {state === "submitting" ? "Sending..." : "Request beta access"}
+        {state === "submitting" ? "Sending..." : "Request app access"}
       </button>
     </form>
   );

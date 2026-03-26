@@ -79,9 +79,13 @@ export default function HomePage() {
         {/* Beta signup */}
         <section className="flex flex-col items-center px-4 pb-16">
           <div className="w-full max-w-[480px] rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 text-center shadow-[0_4px_24px_rgba(0,0,0,0.06)] max-sm:p-5">
-            <h2 className="mb-2 text-2xl font-bold">Join the beta</h2>
+            <span className="mb-3 inline-block rounded-full bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-accent">
+              Coming to iOS
+            </span>
+            <h2 className="mb-2 text-2xl font-bold">Get early access to the app</h2>
             <p className="mb-6 text-lg text-text-muted">
-              in prose is in early beta. Sign up to get access.
+              The in prose iOS app is in early beta. Sign up to be first in
+              line.
             </p>
             <SignupForm />
           </div>
