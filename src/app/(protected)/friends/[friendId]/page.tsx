@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useParams, useRouter } from "next/navigation";
@@ -20,6 +20,7 @@ type ReadingBook = {
   title: string | null;
   cover_url: string | null;
   first_author_name: string | null;
+  started_at: string | null;
 };
 
 type Favourite = {
@@ -41,7 +42,35 @@ type ActivityItem = {
   activity_type: string;
   rating: number | null;
   review: string | null;
+  status_message: string | null;
   created_at: string;
+};
+
+type ReactionSummary = {
+  activity_user_id: string;
+  isbn13: string;
+  activity_type: string;
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+};
+
+type CommentCount = {
+  activity_user_id: string;
+  isbn13: string;
+  activity_type: string;
+  count: number;
+};
+
+type ActivityComment = {
+  id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  author_display_name: string | null;
+  author_avatar_url: string | null;
+  author_username: string | null;
 };
 
 type BookInCommon = {
@@ -54,6 +83,27 @@ type BookInCommon = {
   friend_status: string | null;
   friend_rating: number | null;
 };
+
+type LibraryBook = {
+  isbn13: string;
+  title: string | null;
+  cover_url: string | null;
+  first_author_name: string | null;
+};
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+
+const STATUS_LABELS: Record<string, string> = {
+  to_read: "To read",
+  reading: "Reading",
+  finished: "Finished",
+  dnf: "DNF",
+};
+
+function friendlyStatus(status: string | null): string {
+  if (!status) return "—";
+  return STATUS_LABELS[status] ?? status;
+}
 
 function Avatar({
   url,
@@ -100,13 +150,20 @@ function relativeTime(dateStr: string): string {
 
 function activityText(type: string): string {
   switch (type) {
-    case "started": return "started reading";
-    case "finished": return "finished";
-    case "reviewed": return "reviewed";
-    case "dnf": return "did not finish";
-    default: return type;
+    case "started":
+      return "started reading";
+    case "finished":
+      return "finished reading";
+    case "reviewed":
+      return "reviewed";
+    case "dnf":
+      return "did not finish";
+    default:
+      return type;
   }
 }
+
+type BottomView = "feed" | "library";
 
 export default function FriendProfilePage() {
   const { user } = useAuth();
@@ -121,16 +178,20 @@ export default function FriendProfilePage() {
   const [currentlyReading, setCurrentlyReading] = useState<ReadingBook[]>([]);
   const [favourites, setFavourites] = useState<Favourite[]>([]);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [reactions, setReactions] = useState<ReactionSummary[]>([]);
+  const [commentCounts, setCommentCounts] = useState<CommentCount[]>([]);
   const [booksInCommon, setBooksInCommon] = useState<BookInCommon[]>([]);
   const [showBooksInCommon, setShowBooksInCommon] = useState(false);
-  const [showLibrary, setShowLibrary] = useState(false);
-  const [libraryBooks, setLibraryBooks] = useState<ReadingBook[]>([]);
-  const [confirmAction, setConfirmAction] = useState<"remove" | "block" | null>(null);
+  const [bottomView, setBottomView] = useState<BottomView>("feed");
+  const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([]);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<
+    "remove" | "block" | null
+  >(null);
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
 
-    // Load profile
     const { data: profileData } = await supabase
       .from("profiles")
       .select("id, display_name, username, avatar_url, description, created_at")
@@ -143,7 +204,7 @@ export default function FriendProfilePage() {
     }
     setProfile(profileData);
 
-    // Check friendship via direct query (matching iOS app pattern)
+    // Check friendship
     const { data: friendshipRows } = await supabase
       .from("friendships")
       .select("id")
@@ -156,13 +217,12 @@ export default function FriendProfilePage() {
     setIsFriend(areFriends);
 
     if (areFriends) {
-      // Load currently reading (via RPC since user_books_expanded_all has security_invoker)
-      const { data: libraryData, error: libErr } = await supabase.rpc(
-        "get_friend_library",
-        { friend_id: friendId }
-      );
-      if (libErr) console.error("get_friend_library error:", libErr.message);
+      // Load friend library (used for currently reading + library tab)
+      const { data: libraryData } = await supabase.rpc("get_friend_library", {
+        friend_id: friendId,
+      });
       const allBooks = (libraryData as any[]) ?? [];
+
       setCurrentlyReading(
         allBooks
           .filter((b: any) => b.status === "reading")
@@ -171,16 +231,26 @@ export default function FriendProfilePage() {
             title: b.title ?? null,
             cover_url: b.cover_url ?? null,
             first_author_name: b.first_author_name ?? null,
+            started_at: b.started_at ?? null,
           }))
       );
 
+      setLibraryBooks(
+        allBooks.map((b: any) => ({
+          isbn13: b.isbn13,
+          title: b.title ?? null,
+          cover_url: b.cover_url ?? null,
+          first_author_name: b.first_author_name ?? null,
+        }))
+      );
+      setLibraryLoaded(true);
+
       // Load favourites
-      const { data: favData, error: favErr } = await supabase
+      const { data: favData } = await supabase
         .from("user_favourites")
         .select("isbn13, rank, books(title, image)")
         .eq("user_id", friendId)
         .order("rank", { ascending: true });
-      if (favErr) console.error("favourites error:", favErr.message);
 
       if (favData) {
         setFavourites(
@@ -197,11 +267,32 @@ export default function FriendProfilePage() {
       const { data: activityData } = await supabase.rpc("get_activity_feed", {
         p_user_id: friendId,
         p_activity_type: null,
-        p_limit: 10,
+        p_limit: 20,
         p_offset: 0,
         p_include_test_users: false,
       });
-      setActivities((activityData as ActivityItem[]) ?? []);
+      const items = (activityData as ActivityItem[]) ?? [];
+      setActivities(items);
+
+      // Load engagement data
+      if (items.length > 0) {
+        const [reactionsRes, countsRes] = await Promise.all([
+          supabase.rpc("get_reactions_for_activities", {
+            p_activity_user_ids: items.map((i) => i.user_id),
+            p_isbn13s: items.map((i) => i.book_isbn13 ?? ""),
+            p_activity_types: items.map((i) => i.activity_type),
+          }),
+          supabase.rpc("get_comment_counts_for_activities", {
+            p_activity_user_ids: items.map((i) => i.user_id),
+            p_isbn13s: items.map((i) => i.book_isbn13 ?? ""),
+            p_activity_types: items.map((i) => i.activity_type),
+          }),
+        ]);
+        if (reactionsRes.data)
+          setReactions(reactionsRes.data as ReactionSummary[]);
+        if (countsRes.data)
+          setCommentCounts(countsRes.data as CommentCount[]);
+      }
 
       // Load books in common
       const { data: commonData } = await supabase.rpc("get_books_in_common", {
@@ -234,22 +325,79 @@ export default function FriendProfilePage() {
       addressee_id: friendId,
       status: "pending",
     });
-    setIsFriend(null); // show "pending" state
+    setIsFriend(null);
   }
 
-  async function loadFriendLibrary() {
-    const { data } = await supabase.rpc("get_friend_library", {
-      friend_id: friendId,
-    });
-    setLibraryBooks(
-      ((data as any[]) ?? []).map((b: any) => ({
-        isbn13: b.isbn13,
-        title: b.title ?? null,
-        cover_url: b.cover_url ?? null,
-        first_author_name: b.first_author_name ?? null,
-      }))
+  function getReactionsForItem(item: ActivityItem) {
+    const isbn = item.book_isbn13 ?? "";
+    return reactions.filter(
+      (r) =>
+        r.activity_user_id === item.user_id &&
+        (r.isbn13 ?? "") === isbn &&
+        r.activity_type === item.activity_type
     );
-    setShowLibrary(true);
+  }
+
+  function getCommentCount(item: ActivityItem) {
+    const isbn = item.book_isbn13 ?? "";
+    return (
+      commentCounts.find(
+        (c) =>
+          c.activity_user_id === item.user_id &&
+          (c.isbn13 ?? "") === isbn &&
+          c.activity_type === item.activity_type
+      )?.count ?? 0
+    );
+  }
+
+  async function handleToggleReaction(item: ActivityItem, emoji: string) {
+    const { data } = await supabase.rpc("toggle_activity_reaction", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_emoji: emoji,
+    });
+
+    const action = data as string;
+    setReactions((prev) => {
+      const existing = prev.find(
+        (r) =>
+          r.activity_user_id === item.user_id &&
+          (r.isbn13 ?? "") === (item.book_isbn13 ?? "") &&
+          r.activity_type === item.activity_type &&
+          r.emoji === emoji
+      );
+
+      if (action === "added") {
+        if (existing) {
+          return prev.map((r) =>
+            r === existing
+              ? { ...r, count: r.count + 1, reacted_by_me: true }
+              : r
+          );
+        }
+        return [
+          ...prev,
+          {
+            activity_user_id: item.user_id,
+            isbn13: item.book_isbn13 ?? "",
+            activity_type: item.activity_type,
+            emoji,
+            count: 1,
+            reacted_by_me: true,
+          },
+        ];
+      } else {
+        if (existing && existing.count <= 1) {
+          return prev.filter((r) => r !== existing);
+        }
+        return prev.map((r) =>
+          r === existing
+            ? { ...r, count: r.count - 1, reacted_by_me: false }
+            : r
+        );
+      }
+    });
   }
 
   if (loading) {
@@ -270,7 +418,8 @@ export default function FriendProfilePage() {
 
   const memberSince = profile.created_at
     ? new Date(profile.created_at).toLocaleDateString("en-GB", {
-        month: "long",
+        day: "numeric",
+        month: "short",
         year: "numeric",
       })
     : null;
@@ -300,13 +449,17 @@ export default function FriendProfilePage() {
             {confirmAction && (
               <div className="absolute top-full right-0 z-10 mt-1 w-48 rounded-(--radius-card) border border-border bg-bg-light p-1 shadow-lg">
                 <button
-                  onClick={() => setConfirmAction("remove")}
+                  onClick={() => {
+                    setConfirmAction("remove");
+                  }}
                   className="w-full cursor-pointer rounded px-3 py-2 text-left text-sm text-error hover:bg-error/10"
                 >
                   Remove Friend
                 </button>
                 <button
-                  onClick={() => setConfirmAction("block")}
+                  onClick={() => {
+                    setConfirmAction("block");
+                  }}
                   className="w-full cursor-pointer rounded px-3 py-2 text-left text-sm text-error hover:bg-error/10"
                 >
                   Block User
@@ -319,7 +472,11 @@ export default function FriendProfilePage() {
 
       {/* Profile header */}
       <div className="mb-6 flex flex-col items-center text-center">
-        <Avatar url={profile.avatar_url} name={profile.display_name} size={80} />
+        <Avatar
+          url={profile.avatar_url}
+          name={profile.display_name}
+          size={80}
+        />
         <h1 className="mt-3 text-2xl font-bold">
           {profile.display_name ?? "User"}
         </h1>
@@ -362,7 +519,7 @@ export default function FriendProfilePage() {
           {/* Action buttons */}
           <div className="mb-6 grid grid-cols-2 gap-3">
             <button
-              onClick={loadFriendLibrary}
+              onClick={() => setBottomView("library")}
               className="flex cursor-pointer flex-col items-center gap-1 rounded-(--radius-card) bg-accent p-4 text-white transition-opacity hover:opacity-88"
             >
               <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current">
@@ -371,7 +528,7 @@ export default function FriendProfilePage() {
               <span className="text-xs font-semibold">Library</span>
             </button>
             <button
-              onClick={() => setShowBooksInCommon(!showBooksInCommon)}
+              onClick={() => setShowBooksInCommon(true)}
               className="flex cursor-pointer flex-col items-center gap-1 rounded-(--radius-card) bg-accent p-4 text-white transition-opacity hover:opacity-88"
             >
               <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current">
@@ -383,87 +540,206 @@ export default function FriendProfilePage() {
             </button>
           </div>
 
-          {/* Currently reading */}
+          {/* Currently reading — matching public profile style */}
           {currentlyReading.length > 0 && (
-            <div className="mb-6">
-              <h2 className="mb-3 text-lg font-bold">Currently reading</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {currentlyReading.map((book) => (
-                  <Link
-                    key={book.isbn13}
-                    href={`/library/${book.isbn13}`}
-                    className="flex-shrink-0"
-                  >
-                    <div className="w-[100px]">
-                      {book.cover_url ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={book.cover_url}
-                          alt=""
-                          className="mb-1 aspect-[2/3] w-full rounded-lg object-cover shadow-sm"
-                        />
-                      ) : (
-                        <div className="mb-1 flex aspect-[2/3] w-full items-center justify-center rounded-lg bg-bg-medium p-2">
-                          <span className="text-xs text-text-muted">
-                            {book.title ?? "Book"}
-                          </span>
-                        </div>
-                      )}
-                      <p className="line-clamp-2 text-xs font-semibold">
-                        {book.title}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
+            <section className="mb-6">
+              <div className="overflow-hidden rounded-(--radius-card) bg-[#1a3a5c] p-4">
+                <div className="mb-3 flex justify-center">
+                  <span className="rounded-full bg-white/20 px-4 py-1 text-xs font-bold text-white">
+                    Currently reading
+                  </span>
+                </div>
+                <div className="flex snap-x snap-mandatory gap-4 overflow-x-auto">
+                  {currentlyReading.map((book) => (
+                    <Link
+                      key={book.isbn13}
+                      href={`/library/${book.isbn13}`}
+                      className="flex w-[280px] flex-shrink-0 snap-center gap-3"
+                    >
+                      <div className="aspect-[2/3] w-[80px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_2px_8px_rgba(0,0,0,0.3)]">
+                        {book.cover_url ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={book.cover_url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-white/10 text-[8px] text-white/50">
+                            No cover
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex min-w-0 flex-col justify-center">
+                        <p className="line-clamp-2 text-base font-semibold leading-tight text-white">
+                          {book.title ?? "Untitled"}
+                        </p>
+                        {book.first_author_name && (
+                          <p className="mt-1 text-sm text-white/60">
+                            {book.first_author_name}
+                          </p>
+                        )}
+                        {book.started_at && (
+                          <p className="mt-1.5 text-xs text-white/40">
+                            Started{" "}
+                            {new Date(book.started_at).toLocaleDateString(
+                              "en-GB",
+                              { day: "numeric", month: "short" }
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* Favourites */}
+          {/* Favourites — matching public profile style */}
           {favourites.length > 0 && (
-            <div className="mb-6">
-              <h2 className="mb-3 text-lg font-bold">Favourites</h2>
-              <div className="flex gap-3 overflow-x-auto pb-2">
-                {favourites.map((fav) => (
-                  <Link
-                    key={fav.isbn13}
-                    href={`/library/${fav.isbn13}`}
-                    className="relative flex-shrink-0"
-                  >
-                    <div className="w-[100px]">
+            <section className="mb-6">
+              <div className="rounded-(--radius-card) bg-[#dce8f5] p-5">
+                <div className="mb-4 flex justify-center">
+                  <span className="rounded-full bg-[#1a3a5c] px-4 py-1 text-xs font-bold text-white">
+                    Favourites
+                  </span>
+                </div>
+                <div className="flex justify-center gap-2">
+                  {favourites.map((fav) => (
+                    <Link
+                      key={fav.isbn13}
+                      href={`/library/${fav.isbn13}`}
+                      className="aspect-[2/3] w-[calc((100%-2rem)/5)] max-w-[100px] flex-shrink-0 overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.15)]"
+                    >
                       {fav.cover_url ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img
                           src={fav.cover_url}
-                          alt=""
-                          className="mb-1 aspect-[2/3] w-full rounded-lg object-cover shadow-sm"
+                          alt={fav.title ?? ""}
+                          className="h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="mb-1 flex aspect-[2/3] w-full items-center justify-center rounded-lg bg-bg-medium p-2">
-                          <span className="text-xs text-text-muted">
-                            {fav.title ?? "Book"}
-                          </span>
+                        <div className="flex h-full w-full items-center justify-center bg-white p-1 text-center text-[8px] text-text-subtle">
+                          {fav.title}
                         </div>
                       )}
-                      <p className="line-clamp-2 text-xs font-semibold">
-                        {fav.title}
-                      </p>
-                      {/* Rank badge */}
-                      <span className="absolute -top-1 -left-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-white">
-                        {fav.rank}
-                      </span>
-                    </div>
-                  </Link>
-                ))}
+                    </Link>
+                  ))}
+                </div>
               </div>
+            </section>
+          )}
+
+          {/* Feed / Library toggle */}
+          <div className="mb-4 flex rounded-full border border-border bg-bg-medium p-1">
+            <button
+              onClick={() => setBottomView("feed")}
+              className={`flex-1 cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
+                bottomView === "feed"
+                  ? "bg-accent text-white"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+            >
+              Activity
+            </button>
+            <button
+              onClick={() => setBottomView("library")}
+              className={`flex-1 cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
+                bottomView === "library"
+                  ? "bg-accent text-white"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+            >
+              Library ({libraryBooks.length})
+            </button>
+          </div>
+
+          {/* Feed view */}
+          {bottomView === "feed" && (
+            <div>
+              {activities.length === 0 ? (
+                <p className="py-8 text-center text-text-muted">
+                  No activity yet.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {activities.map((item) => (
+                    <ProfileActivityCard
+                      key={item.id}
+                      item={item}
+                      reactions={getReactionsForItem(item)}
+                      commentCount={getCommentCount(item)}
+                      onToggleReaction={(emoji) =>
+                        handleToggleReaction(item, emoji)
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Books in common (expandable) */}
-          {showBooksInCommon && booksInCommon.length > 0 && (
-            <div className="mb-6">
-              <h2 className="mb-3 text-lg font-bold">Books in common</h2>
-              <div className="space-y-2">
+          {/* Library view */}
+          {bottomView === "library" && (
+            <div>
+              {libraryBooks.length === 0 ? (
+                <p className="py-8 text-center text-text-muted">
+                  No visible books.
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+                  {libraryBooks.map((book) => (
+                    <Link
+                      key={book.isbn13}
+                      href={`/library/${book.isbn13}`}
+                      className="aspect-[2/3] overflow-hidden rounded-lg shadow-[0_1px_4px_rgba(0,0,0,0.12)] transition-shadow hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)]"
+                    >
+                      {book.cover_url ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={book.cover_url}
+                          alt={book.title ?? ""}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center bg-bg-medium p-2 text-center">
+                          <p className="text-xs font-semibold leading-tight text-text-muted">
+                            {book.title ?? "Untitled"}
+                          </p>
+                        </div>
+                      )}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Books in common modal */}
+      {showBooksInCommon && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-20">
+          <div className="w-full max-w-lg rounded-(--radius-card) bg-bg-light p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold">Books in common</h2>
+              <button
+                onClick={() => setShowBooksInCommon(false)}
+                className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-bg-medium"
+              >
+                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
+              </button>
+            </div>
+
+            {booksInCommon.length === 0 ? (
+              <p className="py-8 text-center text-text-muted">
+                No books in common yet.
+              </p>
+            ) : (
+              <div className="space-y-3">
                 {booksInCommon.map((book) => (
                   <Link
                     key={book.isbn13}
@@ -479,136 +755,35 @@ export default function FriendProfilePage() {
                       />
                     ) : (
                       <div className="flex h-16 w-11 items-center justify-center rounded bg-bg-light">
-                        <span className="text-[8px] text-text-subtle">No cover</span>
+                        <span className="text-[8px] text-text-subtle">
+                          No cover
+                        </span>
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold">
                         {book.title ?? "Untitled"}
                       </p>
-                      <p className="text-xs text-text-muted">
-                        You: {book.your_status ?? "—"}
-                        {book.your_rating != null && ` · ${book.your_rating}/10`}
-                        {" · "}
-                        Friend: {book.friend_status ?? "—"}
-                        {book.friend_rating != null &&
-                          ` · ${book.friend_rating}/10`}
-                      </p>
+                      <div className="mt-1 flex gap-4 text-xs text-text-muted">
+                        <span>
+                          You: {friendlyStatus(book.your_status)}
+                          {book.your_rating != null &&
+                            ` · ${book.your_rating}/10`}
+                        </span>
+                        <span>
+                          {profile?.display_name ?? "Friend"}:{" "}
+                          {friendlyStatus(book.friend_status)}
+                          {book.friend_rating != null &&
+                            ` · ${book.friend_rating}/10`}
+                        </span>
+                      </div>
                     </div>
                   </Link>
                 ))}
               </div>
-            </div>
-          )}
-
-          {showBooksInCommon && booksInCommon.length === 0 && (
-            <p className="mb-6 text-center text-sm text-text-muted">
-              No books in common yet.
-            </p>
-          )}
-
-          {/* Friend library (expandable) */}
-          {showLibrary && (
-            <div className="mb-6">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-lg font-bold">
-                  {profile.display_name ?? "Friend"}&apos;s Library
-                </h2>
-                <button
-                  onClick={() => setShowLibrary(false)}
-                  className="cursor-pointer text-xs text-text-subtle hover:text-text-muted"
-                >
-                  Close
-                </button>
-              </div>
-              {libraryBooks.length === 0 ? (
-                <p className="text-sm text-text-muted">No visible books.</p>
-              ) : (
-                <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
-                  {libraryBooks.map((book) => (
-                    <Link
-                      key={book.isbn13}
-                      href={`/library/${book.isbn13}`}
-                      className="aspect-[2/3] overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md"
-                    >
-                      {book.cover_url ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={book.cover_url}
-                          alt={book.title ?? ""}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-bg-medium p-1 text-center text-[10px] text-text-muted">
-                          {book.title ?? "Book"}
-                        </div>
-                      )}
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Activity feed */}
-          {activities.length > 0 && (
-            <div>
-              <h2 className="mb-3 text-lg font-bold">Recent activity</h2>
-              <div className="space-y-3">
-                {activities.map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-3"
-                  >
-                    <div className="flex gap-3">
-                      {item.book_image && (
-                        <Link
-                          href={`/library/${item.book_isbn13}`}
-                          className="flex-shrink-0"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={item.book_image}
-                            alt=""
-                            className="h-[90px] w-[60px] rounded object-cover shadow-sm"
-                          />
-                        </Link>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm">
-                          <span className="font-semibold">
-                            {activityText(item.activity_type)}
-                          </span>{" "}
-                          {item.book_title && (
-                            <span className="font-semibold text-text-primary">
-                              {item.book_title}
-                            </span>
-                          )}
-                        </p>
-                        <p className="mt-0.5 text-xs text-text-subtle">
-                          {relativeTime(item.created_at)}
-                        </p>
-                        {item.rating != null && item.rating > 0 && (
-                          <span className="mt-1 inline-flex items-center gap-1 rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs font-bold text-white">
-                            <svg viewBox="0 0 24 24" className="h-3 w-3 fill-white">
-                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                            </svg>
-                            {item.rating}
-                          </span>
-                        )}
-                        {item.review && (
-                          <p className="mt-1 line-clamp-2 text-xs text-text-muted italic">
-                            &ldquo;{item.review}&rdquo;
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Confirmation dialog */}
@@ -644,6 +819,264 @@ export default function FriendProfilePage() {
                 {confirmAction === "remove" ? "Remove Friend" : "Block User"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Activity card with engagement bar (matching main feed) ────
+
+function ProfileActivityCard({
+  item,
+  reactions,
+  commentCount,
+  onToggleReaction,
+}: {
+  item: ActivityItem;
+  reactions: ReactionSummary[];
+  commentCount: number;
+  onToggleReaction: (emoji: string) => void;
+}) {
+  const { user } = useAuth();
+  const supabase = createClient();
+  const isPost = item.activity_type === "post";
+  const [showPicker, setShowPicker] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<ActivityComment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function loadComments() {
+    setLoadingComments(true);
+    const { data } = await supabase.rpc("get_activity_comments", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_limit: 50,
+      p_offset: 0,
+    });
+    setComments((data as ActivityComment[]) ?? []);
+    setLoadingComments(false);
+  }
+
+  async function handleSubmitComment() {
+    if (!newComment.trim() || !user) return;
+    setSubmitting(true);
+    await supabase.rpc("add_activity_comment", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_body: newComment.trim(),
+      p_parent_id: null,
+      p_mentions: [],
+      p_tagged_books: [],
+    });
+    setNewComment("");
+    setSubmitting(false);
+    await loadComments();
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    await supabase.rpc("delete_activity_comment", { p_comment_id: commentId });
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+  }
+
+  function handleToggleComments() {
+    if (!showComments) loadComments();
+    setShowComments(!showComments);
+  }
+
+  return (
+    <div className="overflow-hidden rounded-(--radius-card) border border-border-subtle">
+      {/* Card content */}
+      <div className="flex gap-4 bg-bg-medium p-4">
+        {!isPost && item.book_image && (
+          <Link
+            href={`/library/${item.book_isbn13}`}
+            className="flex-shrink-0"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.book_image}
+              alt=""
+              className="h-[120px] w-[80px] rounded-lg object-cover shadow-sm"
+            />
+          </Link>
+        )}
+
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex items-center gap-2">
+            <Avatar
+              url={item.avatar_url}
+              name={item.display_name}
+              size={32}
+            />
+            <div className="min-w-0">
+              <span className="text-sm font-semibold">
+                {item.display_name ?? "User"}
+              </span>
+              <span className="ml-2 text-xs text-text-subtle">
+                {relativeTime(item.created_at)}
+              </span>
+            </div>
+          </div>
+
+          {!isPost && (
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm text-text-muted">
+                {activityText(item.activity_type)}{" "}
+                {item.book_title && (
+                  <span className="font-semibold text-text-primary">
+                    {item.book_title}
+                  </span>
+                )}
+              </p>
+              {item.rating != null && item.rating > 0 && (
+                <span className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs font-bold text-white">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3 fill-white">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                  </svg>
+                  {item.rating}
+                </span>
+              )}
+            </div>
+          )}
+
+          {isPost && item.status_message && (
+            <p className="text-sm whitespace-pre-line">
+              {item.status_message}
+            </p>
+          )}
+
+          {item.review && (
+            <p className="mt-1 line-clamp-2 text-sm text-text-muted italic">
+              &ldquo;{item.review}&rdquo;
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Engagement bar */}
+      <div className="flex items-center gap-2 border-t border-border-subtle bg-[#2a2a2a] px-3 py-2">
+        {reactions
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3)
+          .map((r, i) => (
+            <button
+              key={`${r.emoji}-${i}`}
+              onClick={() => onToggleReaction(r.emoji)}
+              className={`cursor-pointer rounded-full px-2 py-0.5 text-xs transition-colors ${
+                r.reacted_by_me
+                  ? "bg-accent text-white"
+                  : "bg-white/15 text-white"
+              }`}
+            >
+              {r.emoji} {r.count}
+            </button>
+          ))}
+
+        <div className="relative">
+          <button
+            onClick={() => setShowPicker(!showPicker)}
+            className="cursor-pointer rounded-full bg-white/10 px-2 py-0.5 text-xs text-white transition-colors hover:bg-white/20"
+          >
+            +
+          </button>
+          {showPicker && (
+            <div className="absolute bottom-full left-0 z-10 mb-1 flex gap-1 rounded-lg bg-bg-light p-2 shadow-lg">
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onToggleReaction(emoji);
+                    setShowPicker(false);
+                  }}
+                  className="cursor-pointer rounded p-1 text-lg transition-colors hover:bg-bg-medium"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        <button
+          onClick={handleToggleComments}
+          className="flex cursor-pointer items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white transition-colors hover:bg-white/20"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
+            <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+          </svg>
+          {commentCount > 0 && <span>{commentCount}</span>}
+        </button>
+      </div>
+
+      {/* Comments thread */}
+      {showComments && (
+        <div className="border-t border-border-subtle bg-bg-light p-3">
+          {loadingComments ? (
+            <p className="py-2 text-center text-xs text-text-muted">
+              Loading comments...
+            </p>
+          ) : comments.length === 0 ? (
+            <p className="py-2 text-center text-xs text-text-muted">
+              No comments yet.
+            </p>
+          ) : (
+            <div className="mb-3 space-y-3">
+              {comments.map((c) => (
+                <div key={c.id} className="flex gap-2">
+                  <Avatar
+                    url={c.author_avatar_url}
+                    name={c.author_display_name}
+                    size={28}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold">
+                        {c.author_display_name ?? "User"}
+                      </span>
+                      <span className="text-[10px] text-text-subtle">
+                        {relativeTime(c.created_at)}
+                        {c.edited_at && " (edited)"}
+                      </span>
+                      {user && c.author_id === user.id && (
+                        <button
+                          onClick={() => handleDeleteComment(c.id)}
+                          className="cursor-pointer text-[10px] text-text-subtle transition-colors hover:text-error"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-primary">{c.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+              placeholder="Add a comment..."
+              className="flex-1 rounded-(--radius-input) border border-border bg-bg-light px-3 py-2 font-serif text-xs outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
+            />
+            <button
+              onClick={handleSubmitComment}
+              disabled={!newComment.trim() || submitting}
+              className="cursor-pointer rounded-(--radius-input) bg-accent px-3 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+            >
+              {submitting ? "..." : "Post"}
+            </button>
           </div>
         </div>
       )}
