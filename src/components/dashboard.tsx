@@ -651,32 +651,35 @@ function CurrentlyReadingSection({
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
-  return (
-    <div className="overflow-hidden rounded-(--radius-card) bg-accent p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
-      <h2 className="mb-4 text-xl font-bold text-white">Currently reading</h2>
-
-      {books.length === 0 ? (
+  if (books.length === 0) {
+    return (
+      <div className="overflow-hidden rounded-(--radius-card) bg-accent p-5 shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
+        <h2 className="mb-2 text-xl font-bold text-white">
+          Currently reading
+        </h2>
         <p className="py-6 text-center text-white/70">
           Check your TBR and pick a new book
         </p>
-      ) : (
-        <>
-          <CurrentlyReadingCard book={books[activeIndex]} />
+      </div>
+    );
+  }
 
-          {books.length > 1 && (
-            <div className="mt-3 flex justify-center gap-1.5">
-              {books.map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => setActiveIndex(i)}
-                  className={`h-2 w-2 cursor-pointer rounded-full transition-colors ${
-                    i === activeIndex ? "bg-white" : "bg-white/40"
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-        </>
+  return (
+    <div className="space-y-3">
+      <CurrentlyReadingCard book={books[activeIndex]} />
+
+      {books.length > 1 && (
+        <div className="flex justify-center gap-1.5">
+          {books.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setActiveIndex(i)}
+              className={`h-2 w-2 cursor-pointer rounded-full transition-colors ${
+                i === activeIndex ? "bg-accent" : "bg-border"
+              }`}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -701,13 +704,14 @@ function CurrentlyReadingCard({
     ? new Date(book.started_at).toLocaleDateString("en-GB", {
         day: "numeric",
         month: "short",
+        year: "numeric",
       })
     : null;
 
   return (
-    <div className="flex h-[130px] overflow-hidden rounded-xl">
+    <div className="flex overflow-hidden rounded-(--radius-card) shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
       {/* Left: blurred cover background */}
-      <div className="relative flex w-28 flex-shrink-0 items-center justify-center overflow-hidden">
+      <div className="relative flex w-[140px] flex-shrink-0 items-center justify-center overflow-hidden py-5">
         {book.cover_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -716,36 +720,39 @@ function CurrentlyReadingCard({
             className="absolute inset-0 h-full w-full scale-150 object-cover blur-xl"
           />
         )}
-        <div className="absolute inset-0 bg-black/20" />
+        <div className="absolute inset-0 bg-black/15" />
         <Link href={`/library/${book.isbn13}`} className="relative z-10">
           {book.cover_url ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src={book.cover_url}
               alt={book.title ?? ""}
-              className="h-[100px] w-[68px] rounded-lg object-cover shadow-md"
+              className="h-[120px] w-[82px] rounded-lg object-cover shadow-lg"
             />
           ) : (
-            <div className="flex h-[100px] w-[68px] items-center justify-center rounded-lg bg-white/20 p-2 text-center text-xs font-semibold text-white shadow-md">
+            <div className="flex h-[120px] w-[82px] items-center justify-center rounded-lg bg-white/20 p-2 text-center text-xs font-semibold text-white shadow-lg">
               {book.title ?? "Unknown"}
             </div>
           )}
         </Link>
       </div>
 
-      {/* Middle: info */}
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
+      {/* Middle: orange background with label + info */}
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 bg-accent px-5 py-5">
+        <span className="w-fit rounded bg-black/20 px-2.5 py-1 text-xs font-bold text-white">
+          Currently reading
+        </span>
         <Link
           href={`/library/${book.isbn13}`}
-          className="truncate text-sm font-bold text-white hover:underline"
+          className="text-xl font-bold text-white hover:underline"
         >
           {book.title ?? "Unknown Title"}
         </Link>
-        <span className="truncate text-xs text-white/70">
+        <span className="text-sm text-white/80">
           {book.first_author_name ?? "Unknown Author"}
         </span>
         {startedLabel && (
-          <span className="text-xs text-white/60">
+          <span className="text-sm text-white/70">
             Started {startedLabel}
             {daysReading &&
               ` \u00b7 ${daysReading} ${daysReading === 1 ? "day" : "days"}`}
@@ -754,18 +761,22 @@ function CurrentlyReadingCard({
       </div>
 
       {/* Right: action buttons (DNF top, Finish bottom — matching app) */}
-      <div className="flex w-16 flex-shrink-0 flex-col">
+      <div className="flex w-[60px] flex-shrink-0 flex-col">
         <Link
           href={`/library/${book.isbn13}?tab=edit&status=dnf`}
-          className="flex flex-1 items-center justify-center bg-error text-xs font-bold text-white transition-opacity hover:opacity-80"
+          className="flex flex-1 items-center justify-center bg-error transition-opacity hover:opacity-80"
         >
-          DNF
+          <svg viewBox="0 0 24 24" className="h-7 w-7 fill-white">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+          </svg>
         </Link>
         <Link
           href={`/library/${book.isbn13}?tab=edit&status=finished`}
-          className="flex flex-1 items-center justify-center bg-green-500 text-xs font-bold text-white transition-opacity hover:opacity-80"
+          className="flex flex-1 items-center justify-center bg-green-600 transition-opacity hover:opacity-80"
         >
-          Finish
+          <svg viewBox="0 0 24 24" className="h-7 w-7 fill-white">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+          </svg>
         </Link>
       </div>
     </div>
