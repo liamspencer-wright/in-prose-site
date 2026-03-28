@@ -144,17 +144,23 @@ export default function FriendProfilePage() {
     setProfile(profileData);
 
     // Check friendship
-    const { data: friendshipData } = await supabase.rpc("are_friends", {
-      user_id_1: user.id,
-      user_id_2: friendId,
-    });
+    const { data: friendshipData, error: friendError } = await supabase.rpc(
+      "are_friends",
+      {
+        user_id_1: user.id,
+        user_id_2: friendId,
+      }
+    );
+    if (friendError) console.error("are_friends error:", friendError.message);
     setIsFriend(!!friendshipData);
 
     if (friendshipData) {
       // Load currently reading (via RPC since user_books_expanded_all has security_invoker)
-      const { data: libraryData } = await supabase.rpc("get_friend_library", {
-        friend_id: friendId,
-      });
+      const { data: libraryData, error: libErr } = await supabase.rpc(
+        "get_friend_library",
+        { friend_id: friendId }
+      );
+      if (libErr) console.error("get_friend_library error:", libErr.message);
       const allBooks = (libraryData as any[]) ?? [];
       setCurrentlyReading(
         allBooks
@@ -168,11 +174,12 @@ export default function FriendProfilePage() {
       );
 
       // Load favourites
-      const { data: favData } = await supabase
+      const { data: favData, error: favErr } = await supabase
         .from("user_favourites")
         .select("isbn13, rank, books(title, image)")
         .eq("user_id", friendId)
         .order("rank", { ascending: true });
+      if (favErr) console.error("favourites error:", favErr.message);
 
       if (favData) {
         setFavourites(
@@ -581,9 +588,12 @@ export default function FriendProfilePage() {
                           {relativeTime(item.created_at)}
                         </p>
                         {item.rating != null && item.rating > 0 && (
-                          <p className="mt-1 text-sm font-semibold text-accent">
-                            {item.rating}/10
-                          </p>
+                          <span className="mt-1 inline-flex items-center gap-1 rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs font-bold text-white">
+                            <svg viewBox="0 0 24 24" className="h-3 w-3 fill-white">
+                              <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                            </svg>
+                            {item.rating}
+                          </span>
                         )}
                         {item.review && (
                           <p className="mt-1 line-clamp-2 text-xs text-text-muted italic">

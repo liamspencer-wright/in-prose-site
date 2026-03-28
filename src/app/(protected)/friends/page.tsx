@@ -237,24 +237,35 @@ function FeedTab() {
     const isbn13s = items.map((i) => i.book_isbn13 ?? "");
     const types = items.map((i) => i.activity_type);
 
-    const [reactionsRes, countsRes] = await Promise.all([
-      supabase.rpc("get_reactions_for_activities", {
-        p_activity_user_ids: userIds,
-        p_isbn13s: isbn13s,
-        p_activity_types: types,
-      }),
-      supabase.rpc("get_comment_counts_for_activities", {
-        p_activity_user_ids: userIds,
-        p_isbn13s: isbn13s,
-        p_activity_types: types,
-      }),
-    ]);
+    try {
+      const [reactionsRes, countsRes] = await Promise.all([
+        supabase.rpc("get_reactions_for_activities", {
+          p_activity_user_ids: userIds,
+          p_isbn13s: isbn13s,
+          p_activity_types: types,
+        }),
+        supabase.rpc("get_comment_counts_for_activities", {
+          p_activity_user_ids: userIds,
+          p_isbn13s: isbn13s,
+          p_activity_types: types,
+        }),
+      ]);
 
-    if (reactionsRes.data) {
-      setReactions((prev) => [...prev, ...(reactionsRes.data as ReactionSummary[])]);
-    }
-    if (countsRes.data) {
-      setCommentCounts((prev) => [...prev, ...(countsRes.data as CommentCount[])]);
+      if (reactionsRes.error) {
+        console.error("Reactions RPC error:", reactionsRes.error.message);
+      }
+      if (countsRes.error) {
+        console.error("Comment counts RPC error:", countsRes.error.message);
+      }
+
+      if (reactionsRes.data) {
+        setReactions((prev) => [...prev, ...(reactionsRes.data as ReactionSummary[])]);
+      }
+      if (countsRes.data) {
+        setCommentCounts((prev) => [...prev, ...(countsRes.data as CommentCount[])]);
+      }
+    } catch (e) {
+      console.error("Engagement load error:", e);
     }
   }
 
@@ -310,20 +321,22 @@ function FeedTab() {
   }
 
   function getReactionsForItem(item: ActivityItem) {
+    const isbn = item.book_isbn13 ?? "";
     return reactions.filter(
       (r) =>
         r.activity_user_id === item.user_id &&
-        r.isbn13 === (item.book_isbn13 ?? "") &&
+        (r.isbn13 ?? "") === isbn &&
         r.activity_type === item.activity_type
     );
   }
 
   function getCommentCount(item: ActivityItem) {
+    const isbn = item.book_isbn13 ?? "";
     return (
       commentCounts.find(
         (c) =>
           c.activity_user_id === item.user_id &&
-          c.isbn13 === (item.book_isbn13 ?? "") &&
+          (c.isbn13 ?? "") === isbn &&
           c.activity_type === item.activity_type
       )?.count ?? 0
     );
@@ -578,28 +591,31 @@ function ActivityCard({
             </div>
           </div>
 
-          {/* Activity text */}
+          {/* Activity text + rating badge */}
           {!isPost && (
-            <p className="text-sm text-text-muted">
-              {activityText(item.activity_type)}{" "}
-              {item.book_title && (
-                <span className="font-semibold text-text-primary">
-                  {item.book_title}
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm text-text-muted">
+                {activityText(item.activity_type)}{" "}
+                {item.book_title && (
+                  <span className="font-semibold text-text-primary">
+                    {item.book_title}
+                  </span>
+                )}
+              </p>
+              {item.rating != null && item.rating > 0 && (
+                <span className="flex flex-shrink-0 items-center gap-1 rounded-lg bg-[#2a2a2a] px-2 py-1 text-xs font-bold text-white">
+                  <svg viewBox="0 0 24 24" className="h-3 w-3 fill-white">
+                    <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
+                  </svg>
+                  {item.rating}
                 </span>
               )}
-            </p>
+            </div>
           )}
 
           {/* Post text */}
           {isPost && item.status_message && (
             <p className="text-sm whitespace-pre-line">{item.status_message}</p>
-          )}
-
-          {/* Rating */}
-          {item.rating != null && item.rating > 0 && (
-            <p className="mt-1 text-sm font-semibold text-accent">
-              {item.rating}/10
-            </p>
           )}
 
           {/* Review excerpt */}
@@ -1163,23 +1179,70 @@ function PostComposeModal({
   onClose: () => void;
   onPostCreated: () => void;
 }) {
+  const { user } = useAuth();
   const supabase = createClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [visibility, setVisibility] = useState<
     "public" | "friends_only" | "private"
   >("friends_only");
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState("");
   const MAX_LENGTH = 2000;
+  const MAX_IMAGES = 4;
+
+  function handleImageSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    const available = MAX_IMAGES - images.length;
+    const toAdd = files.slice(0, available);
+
+    setImages((prev) => [...prev, ...toAdd]);
+    setImagePreviews((prev) => [
+      ...prev,
+      ...toAdd.map((f) => URL.createObjectURL(f)),
+    ]);
+
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removeImage(index: number) {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSubmit() {
-    if (!text.trim()) return;
+    if (!text.trim() && images.length === 0) return;
+    if (!user) return;
     setError("");
     setPosting(true);
 
+    // Upload images
+    const imageUrls: string[] = [];
+    for (const img of images) {
+      const ext = img.name.split(".").pop() ?? "jpg";
+      const path = `${user.id}/post_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("post-images")
+        .upload(path, img, { contentType: img.type, upsert: true });
+
+      if (uploadError) {
+        setError("Failed to upload image.");
+        setPosting(false);
+        return;
+      }
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("post-images").getPublicUrl(path);
+      imageUrls.push(publicUrl);
+    }
+
     const { error: rpcError } = await supabase.rpc("create_post", {
       p_text_content: text.trim(),
-      p_image_urls: [],
+      p_image_urls: imageUrls,
       p_mentions: [],
       p_tagged_books: [],
       p_visibility: visibility,
@@ -1220,6 +1283,50 @@ function PostComposeModal({
           rows={5}
           className="mb-2 w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
           autoFocus
+        />
+
+        {/* Image previews */}
+        {imagePreviews.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {imagePreviews.map((url, i) => (
+              <div key={i} className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={url}
+                  alt=""
+                  className="h-20 w-20 rounded-lg object-cover"
+                />
+                <button
+                  onClick={() => removeImage(i)}
+                  className="absolute -top-1 -right-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-error text-[10px] text-white"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Add photos button */}
+        {images.length < MAX_IMAGES && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="mb-2 flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-input) border-[1.5px] border-accent px-4 py-2.5 text-sm font-semibold text-accent transition-colors hover:bg-accent/5"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+              <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+            </svg>
+            Add Photos
+          </button>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={handleImageSelect}
+          className="hidden"
         />
 
         <div className="mb-4 flex items-center justify-between">
