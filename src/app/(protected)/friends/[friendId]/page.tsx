@@ -143,18 +143,19 @@ export default function FriendProfilePage() {
     }
     setProfile(profileData);
 
-    // Check friendship
-    const { data: friendshipData, error: friendError } = await supabase.rpc(
-      "are_friends",
-      {
-        user_a: user.id,
-        user_b: friendId,
-      }
-    );
-    if (friendError) console.error("are_friends error:", friendError.message);
-    setIsFriend(!!friendshipData);
+    // Check friendship via direct query (matching iOS app pattern)
+    const { data: friendshipRows } = await supabase
+      .from("friendships")
+      .select("id")
+      .eq("status", "accepted")
+      .or(
+        `and(requester_id.eq.${user.id},addressee_id.eq.${friendId}),and(requester_id.eq.${friendId},addressee_id.eq.${user.id})`
+      )
+      .limit(1);
+    const areFriends = (friendshipRows?.length ?? 0) > 0;
+    setIsFriend(areFriends);
 
-    if (friendshipData) {
+    if (areFriends) {
       // Load currently reading (via RPC since user_books_expanded_all has security_invoker)
       const { data: libraryData, error: libErr } = await supabase.rpc(
         "get_friend_library",
