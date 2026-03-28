@@ -485,10 +485,10 @@ function RollingTargetCard({
         </span>
       </div>
 
-      {/* Horizontal layout: bar chart left, circular progress right */}
-      <div className="flex items-center gap-6">
-        {/* Bar chart */}
-        {displayHistory.length > 0 && (
+      {displayHistory.length > 0 ? (
+        /* Horizontal layout: bar chart left, circular progress right */
+        <div className="flex items-center gap-6">
+          {/* Bar chart */}
           <div className="flex-1">
             <div className="relative flex items-end gap-1.5" style={{ height: "100px" }}>
               {displayHistory.map((h, i) => {
@@ -549,19 +549,35 @@ function RollingTargetCard({
               ))}
             </div>
           </div>
-        )}
 
-        {/* Circular progress for current period */}
-        <div className="flex flex-shrink-0 flex-col items-center">
-          <CircularProgress pct={pct} size={80}>
-            <span className="text-lg font-bold">{progress}</span>
-            <span className="text-[10px] text-text-muted">/ {target.goal}</span>
-          </CircularProgress>
-          <span className="mt-1 text-[10px] text-text-subtle">
-            This {cadenceLabel}
-          </span>
+          {/* Circular progress for current period */}
+          <div className="flex flex-shrink-0 flex-col items-center">
+            <CircularProgress pct={pct} size={80}>
+              <span className="text-lg font-bold">{progress}</span>
+              <span className="text-[10px] text-text-muted">/ {target.goal}</span>
+            </CircularProgress>
+            <span className="mt-1 text-[10px] text-text-subtle">
+              This {cadenceLabel}
+            </span>
+          </div>
         </div>
-      </div>
+      ) : (
+        /* No history yet — show a simple progress bar like deadline targets */
+        <div>
+          <div className="relative h-4 overflow-hidden rounded-full bg-border">
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-accent transition-all"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-xs text-text-muted">
+            <span>
+              {progress} / {target.goal} {target.unit}
+            </span>
+            <span>This {cadenceLabel}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -689,9 +705,9 @@ function CurrentlyReadingCard({
     : null;
 
   return (
-    <div className="flex items-stretch overflow-hidden rounded-xl">
+    <div className="flex h-[130px] overflow-hidden rounded-xl">
       {/* Left: blurred cover background */}
-      <div className="relative flex w-24 flex-shrink-0 items-center justify-center overflow-hidden">
+      <div className="relative flex w-28 flex-shrink-0 items-center justify-center overflow-hidden">
         {book.cover_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -718,7 +734,7 @@ function CurrentlyReadingCard({
       </div>
 
       {/* Middle: info */}
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4 py-4">
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
         <Link
           href={`/library/${book.isbn13}`}
           className="truncate text-sm font-bold text-white hover:underline"
@@ -738,16 +754,16 @@ function CurrentlyReadingCard({
       </div>
 
       {/* Right: action buttons (DNF top, Finish bottom — matching app) */}
-      <div className="flex flex-shrink-0 flex-col">
+      <div className="flex w-16 flex-shrink-0 flex-col">
         <Link
           href={`/library/${book.isbn13}?tab=edit&status=dnf`}
-          className="flex flex-1 items-center justify-center bg-error px-5 text-xs font-bold text-white transition-opacity hover:opacity-80"
+          className="flex flex-1 items-center justify-center bg-error text-xs font-bold text-white transition-opacity hover:opacity-80"
         >
           DNF
         </Link>
         <Link
           href={`/library/${book.isbn13}?tab=edit&status=finished`}
-          className="flex flex-1 items-center justify-center bg-green-500 px-5 text-xs font-bold text-white transition-opacity hover:opacity-80"
+          className="flex flex-1 items-center justify-center bg-green-500 text-xs font-bold text-white transition-opacity hover:opacity-80"
         >
           Finish
         </Link>
