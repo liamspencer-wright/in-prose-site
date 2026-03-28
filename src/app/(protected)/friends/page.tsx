@@ -227,6 +227,7 @@ function FeedTab() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [reactions, setReactions] = useState<ReactionSummary[]>([]);
   const [commentCounts, setCommentCounts] = useState<CommentCount[]>([]);
+  const [showCompose, setShowCompose] = useState(false);
   const PAGE_SIZE = 20;
 
   async function loadEngagement(items: ActivityItem[]) {
@@ -398,23 +399,43 @@ function FeedTab() {
     return <p className="py-12 text-center text-text-muted">Loading feed...</p>;
   }
 
+  function handlePostCreated() {
+    setShowCompose(false);
+    // Reload the feed
+    setLoading(true);
+    setOffset(0);
+    loadFeed(0, false).finally(() => setLoading(false));
+  }
+
   return (
     <div>
-      {/* Filter bar */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(Object.keys(FEED_FILTER_LABELS) as FeedFilter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-              filter === f
-                ? "bg-accent text-white"
-                : "bg-bg-medium text-text-muted hover:bg-accent/10"
-            }`}
-          >
-            {FEED_FILTER_LABELS[f]}
-          </button>
-        ))}
+      {/* Filter bar + compose button */}
+      <div className="mb-4 flex items-center gap-2">
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(FEED_FILTER_LABELS) as FeedFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+                filter === f
+                  ? "bg-accent text-white"
+                  : "bg-bg-medium text-text-muted hover:bg-accent/10"
+              }`}
+            >
+              {FEED_FILTER_LABELS[f]}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <button
+          onClick={() => setShowCompose(true)}
+          className="cursor-pointer rounded-full bg-accent p-2.5 text-white shadow-md transition-opacity hover:opacity-88"
+          title="New post"
+        >
+          <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+          </svg>
+        </button>
       </div>
 
       {activities.length === 0 ? (
@@ -443,6 +464,14 @@ function FeedTab() {
             </button>
           )}
         </div>
+      )}
+
+      {/* Compose post modal */}
+      {showCompose && (
+        <PostComposeModal
+          onClose={() => setShowCompose(false)}
+          onPostCreated={handlePostCreated}
+        />
       )}
     </div>
   );
@@ -1118,6 +1147,122 @@ function FriendRequestsModal({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+//  POST COMPOSE MODAL (#46)
+// ══════════════════════════════════════════════════════════════
+
+function PostComposeModal({
+  onClose,
+  onPostCreated,
+}: {
+  onClose: () => void;
+  onPostCreated: () => void;
+}) {
+  const supabase = createClient();
+  const [text, setText] = useState("");
+  const [visibility, setVisibility] = useState<"public" | "friends_only">(
+    "friends_only"
+  );
+  const [posting, setPosting] = useState(false);
+  const [error, setError] = useState("");
+  const MAX_LENGTH = 2000;
+
+  async function handleSubmit() {
+    if (!text.trim()) return;
+    setError("");
+    setPosting(true);
+
+    const { error: rpcError } = await supabase.rpc("create_post", {
+      p_text_content: text.trim(),
+      p_image_urls: [],
+      p_mentions: [],
+      p_tagged_books: [],
+      p_visibility: visibility,
+      p_quoted_activity_user_id: null,
+      p_quoted_activity_isbn13: null,
+      p_quoted_activity_type: null,
+    });
+
+    if (rpcError) {
+      setError(rpcError.message);
+      setPosting(false);
+      return;
+    }
+
+    setPosting(false);
+    onPostCreated();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-20">
+      <div className="w-full max-w-lg rounded-(--radius-card) bg-bg-light p-6 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold">New post</h2>
+          <button
+            onClick={onClose}
+            className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-bg-medium"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
+              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+            </svg>
+          </button>
+        </div>
+
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value.slice(0, MAX_LENGTH))}
+          placeholder="What's on your mind?"
+          rows={5}
+          className="mb-2 w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
+          autoFocus
+        />
+
+        <div className="mb-4 flex items-center justify-between">
+          <span
+            className={`text-xs ${text.length > MAX_LENGTH * 0.9 ? "text-error" : "text-text-subtle"}`}
+          >
+            {text.length}/{MAX_LENGTH}
+          </span>
+
+          {/* Visibility selector */}
+          <div className="flex gap-1">
+            <button
+              onClick={() => setVisibility("friends_only")}
+              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                visibility === "friends_only"
+                  ? "bg-accent text-white"
+                  : "bg-bg-medium text-text-muted"
+              }`}
+            >
+              Friends only
+            </button>
+            <button
+              onClick={() => setVisibility("public")}
+              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                visibility === "public"
+                  ? "bg-accent text-white"
+                  : "bg-bg-medium text-text-muted"
+              }`}
+            >
+              Public
+            </button>
+          </div>
+        </div>
+
+        {error && <p className="mb-3 text-sm text-error">{error}</p>}
+
+        <button
+          onClick={handleSubmit}
+          disabled={!text.trim() || posting}
+          className="w-full cursor-pointer rounded-(--radius-input) bg-accent px-6 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+        >
+          {posting ? "Posting..." : "Post"}
+        </button>
       </div>
     </div>
   );
