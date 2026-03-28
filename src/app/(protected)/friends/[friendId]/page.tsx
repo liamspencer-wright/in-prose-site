@@ -147,8 +147,8 @@ export default function FriendProfilePage() {
     const { data: friendshipData, error: friendError } = await supabase.rpc(
       "are_friends",
       {
-        user_id_1: user.id,
-        user_id_2: friendId,
+        user_a: user.id,
+        user_b: friendId,
       }
     );
     if (friendError) console.error("are_friends error:", friendError.message);

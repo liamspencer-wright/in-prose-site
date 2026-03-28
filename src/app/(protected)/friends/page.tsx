@@ -230,7 +230,7 @@ function FeedTab() {
   const [showCompose, setShowCompose] = useState(false);
   const PAGE_SIZE = 20;
 
-  async function loadEngagement(items: ActivityItem[]) {
+  async function loadEngagement(items: ActivityItem[], append: boolean) {
     if (items.length === 0) return;
 
     const userIds = items.map((i) => i.user_id);
@@ -258,11 +258,15 @@ function FeedTab() {
         console.error("Comment counts RPC error:", countsRes.error.message);
       }
 
-      if (reactionsRes.data) {
-        setReactions((prev) => [...prev, ...(reactionsRes.data as ReactionSummary[])]);
-      }
-      if (countsRes.data) {
-        setCommentCounts((prev) => [...prev, ...(countsRes.data as CommentCount[])]);
+      const newReactions = (reactionsRes.data as ReactionSummary[]) ?? [];
+      const newCounts = (countsRes.data as CommentCount[]) ?? [];
+
+      if (append) {
+        setReactions((prev) => [...prev, ...newReactions]);
+        setCommentCounts((prev) => [...prev, ...newCounts]);
+      } else {
+        setReactions(newReactions);
+        setCommentCounts(newCounts);
       }
     } catch (e) {
       console.error("Engagement load error:", e);
@@ -295,13 +299,11 @@ function FeedTab() {
         setActivities((prev) => [...prev, ...items]);
       } else {
         setActivities(items);
-        setReactions([]);
-        setCommentCounts([]);
       }
       setHasMore(items.length >= PAGE_SIZE);
 
       // Load engagement data for these items
-      await loadEngagement(items);
+      await loadEngagement(items, append);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, supabase, filter]
