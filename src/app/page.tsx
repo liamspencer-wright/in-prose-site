@@ -3,8 +3,17 @@ import Script from "next/script";
 import Link from "next/link";
 import { SignupForm } from "./signup-form";
 import { NavBar } from "@/components/nav-bar";
+import { HomePageSwitch } from "./home-switch";
 
 export default function HomePage() {
+  return (
+    <HomePageSwitch
+      marketingPage={<MarketingPage />}
+    />
+  );
+}
+
+function MarketingPage() {
   return (
     <>
       <Script
@@ -84,8 +93,9 @@ export default function HomePage() {
             </span>
             <h2 className="mb-2 text-2xl font-bold">Get early access to the app</h2>
             <p className="mb-6 text-lg text-text-muted">
-              The in prose iOS app is in early beta. Sign up to be first in
-              line.
+              The in prose iOS app is in early beta.
+              <br />
+              Sign up to be first in line.
             </p>
             <SignupForm />
           </div>
