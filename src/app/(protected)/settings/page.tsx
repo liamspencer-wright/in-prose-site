@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 
 export default function SettingsPage() {
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const supabase = createClient();
 
   const [showDeleteInfo, setShowDeleteInfo] = useState(false);
@@ -52,6 +52,18 @@ export default function SettingsPage() {
     <div className="mx-auto w-full max-w-xl px-6 pt-4 pb-12 max-sm:px-4">
       <h1 className="mb-8 text-3xl font-bold">Settings</h1>
 
+      {/* Account info */}
+      <Section title="Account">
+        {user?.email && (
+          <p className="text-sm text-text-muted">
+            Signed in as{" "}
+            <span className="font-semibold text-text-primary">
+              {user.email}
+            </span>
+          </p>
+        )}
+      </Section>
+
       {/* Profile link */}
       <Section title="Profile">
         <p className="mb-3 text-sm text-text-muted">
@@ -96,6 +108,16 @@ export default function SettingsPage() {
             {changingPassword ? "Updating..." : "Update password"}
           </button>
         </form>
+        <p className="mt-3 text-sm text-text-muted">
+          Or{" "}
+          <Link
+            href="/forgot-password"
+            className="font-semibold text-accent hover:underline"
+          >
+            reset your password via email
+          </Link>
+          .
+        </p>
       </Section>
 
       {/* About */}
