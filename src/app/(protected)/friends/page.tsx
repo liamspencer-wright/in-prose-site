@@ -617,9 +617,9 @@ function ActivityCard({
         {reactions
           .sort((a, b) => b.count - a.count)
           .slice(0, 3)
-          .map((r) => (
+          .map((r, i) => (
             <button
-              key={r.emoji}
+              key={`${r.emoji}-${i}`}
               onClick={() => onToggleReaction(r.emoji)}
               className={`cursor-pointer rounded-full px-2 py-0.5 text-xs transition-colors ${
                 r.reacted_by_me
@@ -1165,9 +1165,9 @@ function PostComposeModal({
 }) {
   const supabase = createClient();
   const [text, setText] = useState("");
-  const [visibility, setVisibility] = useState<"public" | "friends_only">(
-    "friends_only"
-  );
+  const [visibility, setVisibility] = useState<
+    "public" | "friends_only" | "private"
+  >("friends_only");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState("");
   const MAX_LENGTH = 2000;
@@ -1231,26 +1231,25 @@ function PostComposeModal({
 
           {/* Visibility selector */}
           <div className="flex gap-1">
-            <button
-              onClick={() => setVisibility("friends_only")}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                visibility === "friends_only"
-                  ? "bg-accent text-white"
-                  : "bg-bg-medium text-text-muted"
-              }`}
-            >
-              Friends only
-            </button>
-            <button
-              onClick={() => setVisibility("public")}
-              className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                visibility === "public"
-                  ? "bg-accent text-white"
-                  : "bg-bg-medium text-text-muted"
-              }`}
-            >
-              Public
-            </button>
+            {(
+              [
+                { value: "public", label: "Public" },
+                { value: "friends_only", label: "Friends" },
+                { value: "private", label: "Private" },
+              ] as const
+            ).map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setVisibility(opt.value)}
+                className={`cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                  visibility === opt.value
+                    ? "bg-accent text-white"
+                    : "bg-bg-medium text-text-muted"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
         </div>
 

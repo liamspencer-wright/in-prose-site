@@ -151,13 +151,21 @@ export default function FriendProfilePage() {
     setIsFriend(!!friendshipData);
 
     if (friendshipData) {
-      // Load currently reading
-      const { data: reading } = await supabase
-        .from("user_books_expanded_all")
-        .select("isbn13, title, cover_url, first_author_name")
-        .eq("user_id", friendId)
-        .eq("status", "reading");
-      setCurrentlyReading((reading as ReadingBook[]) ?? []);
+      // Load currently reading (via RPC since user_books_expanded_all has security_invoker)
+      const { data: libraryData } = await supabase.rpc("get_friend_library", {
+        friend_id: friendId,
+      });
+      const allBooks = (libraryData as any[]) ?? [];
+      setCurrentlyReading(
+        allBooks
+          .filter((b: any) => b.status === "reading")
+          .map((b: any) => ({
+            isbn13: b.isbn13,
+            title: b.title ?? null,
+            cover_url: b.cover_url ?? null,
+            first_author_name: b.first_author_name ?? null,
+          }))
+      );
 
       // Load favourites
       const { data: favData } = await supabase
