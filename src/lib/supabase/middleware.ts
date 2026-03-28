@@ -7,7 +7,6 @@ const PROTECTED_ROUTES = [
   "/friends",
   "/feed",
   "/settings",
-  "/contact",
   "/signup/profile",
 ];
 
@@ -60,7 +59,6 @@ export async function updateSession(request: NextRequest) {
       "/friends": "Log in to see your friends",
       "/feed": "Log in to view your feed",
       "/settings": "Log in to access settings",
-      "/contact": "Log in to contact us",
       "/account": "Log in to access your account",
     };
     const message = Object.entries(messages).find(([route]) =>
@@ -71,6 +69,25 @@ export async function updateSession(request: NextRequest) {
     }
 
     return NextResponse.redirect(url);
+  }
+
+  // Redirect authenticated users with incomplete profiles to profile setup
+  if (
+    user &&
+    isProtected &&
+    !request.nextUrl.pathname.startsWith("/signup/profile")
+  ) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profile?.username) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/signup/profile";
+      return NextResponse.redirect(url);
+    }
   }
 
   // Redirect authenticated users away from auth pages (login/signup)

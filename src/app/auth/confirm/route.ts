@@ -29,11 +29,11 @@ export async function GET(request: Request) {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("display_name")
+          .select("display_name, username")
           .eq("id", user.id)
           .maybeSingle();
 
-        if (!profile?.display_name) {
+        if (!profile?.display_name || !profile?.username) {
           return NextResponse.redirect(`${origin}/signup/profile`);
         }
       }
