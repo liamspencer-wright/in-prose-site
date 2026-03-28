@@ -68,6 +68,35 @@ type ActivityItem = {
   created_at: string;
 };
 
+type ReactionSummary = {
+  activity_user_id: string;
+  isbn13: string;
+  activity_type: string;
+  emoji: string;
+  count: number;
+  reacted_by_me: boolean;
+};
+
+type CommentCount = {
+  activity_user_id: string;
+  isbn13: string;
+  activity_type: string;
+  count: number;
+};
+
+type ActivityComment = {
+  id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
+  edited_at: string | null;
+  author_display_name: string | null;
+  author_avatar_url: string | null;
+  author_username: string | null;
+};
+
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+
 // ── Avatar helper ─────────────────────────────────────────────
 
 function Avatar({
@@ -196,7 +225,37 @@ function FeedTab() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [reactions, setReactions] = useState<ReactionSummary[]>([]);
+  const [commentCounts, setCommentCounts] = useState<CommentCount[]>([]);
   const PAGE_SIZE = 20;
+
+  async function loadEngagement(items: ActivityItem[]) {
+    if (items.length === 0) return;
+
+    const userIds = items.map((i) => i.user_id);
+    const isbn13s = items.map((i) => i.book_isbn13 ?? "");
+    const types = items.map((i) => i.activity_type);
+
+    const [reactionsRes, countsRes] = await Promise.all([
+      supabase.rpc("get_reactions_for_activities", {
+        p_activity_user_ids: userIds,
+        p_isbn13s: isbn13s,
+        p_activity_types: types,
+      }),
+      supabase.rpc("get_comment_counts_for_activities", {
+        p_activity_user_ids: userIds,
+        p_isbn13s: isbn13s,
+        p_activity_types: types,
+      }),
+    ]);
+
+    if (reactionsRes.data) {
+      setReactions((prev) => [...prev, ...(reactionsRes.data as ReactionSummary[])]);
+    }
+    if (countsRes.data) {
+      setCommentCounts((prev) => [...prev, ...(countsRes.data as CommentCount[])]);
+    }
+  }
 
   const loadFeed = useCallback(
     async (pageOffset: number, append: boolean) => {
@@ -224,9 +283,15 @@ function FeedTab() {
         setActivities((prev) => [...prev, ...items]);
       } else {
         setActivities(items);
+        setReactions([]);
+        setCommentCounts([]);
       }
       setHasMore(items.length >= PAGE_SIZE);
+
+      // Load engagement data for these items
+      await loadEngagement(items);
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [user, supabase, filter]
   );
 
@@ -241,6 +306,92 @@ function FeedTab() {
     setOffset(next);
     setLoadingMore(true);
     loadFeed(next, true).finally(() => setLoadingMore(false));
+  }
+
+  function getReactionsForItem(item: ActivityItem) {
+    return reactions.filter(
+      (r) =>
+        r.activity_user_id === item.user_id &&
+        r.isbn13 === (item.book_isbn13 ?? "") &&
+        r.activity_type === item.activity_type
+    );
+  }
+
+  function getCommentCount(item: ActivityItem) {
+    return (
+      commentCounts.find(
+        (c) =>
+          c.activity_user_id === item.user_id &&
+          c.isbn13 === (item.book_isbn13 ?? "") &&
+          c.activity_type === item.activity_type
+      )?.count ?? 0
+    );
+  }
+
+  async function handleToggleReaction(item: ActivityItem, emoji: string) {
+    const { data } = await supabase.rpc("toggle_activity_reaction", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_emoji: emoji,
+    });
+
+    const action = data as string;
+    setReactions((prev) => {
+      const key = `${item.user_id}-${item.book_isbn13 ?? ""}-${item.activity_type}-${emoji}`;
+      const existing = prev.find(
+        (r) =>
+          r.activity_user_id === item.user_id &&
+          r.isbn13 === (item.book_isbn13 ?? "") &&
+          r.activity_type === item.activity_type &&
+          r.emoji === emoji
+      );
+
+      if (action === "added") {
+        if (existing) {
+          return prev.map((r) =>
+            r.activity_user_id === item.user_id &&
+            r.isbn13 === (item.book_isbn13 ?? "") &&
+            r.activity_type === item.activity_type &&
+            r.emoji === emoji
+              ? { ...r, count: r.count + 1, reacted_by_me: true }
+              : r
+          );
+        }
+        return [
+          ...prev,
+          {
+            activity_user_id: item.user_id,
+            isbn13: item.book_isbn13 ?? "",
+            activity_type: item.activity_type,
+            emoji,
+            count: 1,
+            reacted_by_me: true,
+          },
+        ];
+      } else {
+        // removed
+        if (existing && existing.count <= 1) {
+          return prev.filter(
+            (r) =>
+              !(
+                r.activity_user_id === item.user_id &&
+                r.isbn13 === (item.book_isbn13 ?? "") &&
+                r.activity_type === item.activity_type &&
+                r.emoji === emoji
+              )
+          );
+        }
+        return prev.map((r) =>
+          r.activity_user_id === item.user_id &&
+          r.isbn13 === (item.book_isbn13 ?? "") &&
+          r.activity_type === item.activity_type &&
+          r.emoji === emoji
+            ? { ...r, count: r.count - 1, reacted_by_me: false }
+            : r
+        );
+      }
+    });
   }
 
   if (loading) {
@@ -273,7 +424,13 @@ function FeedTab() {
       ) : (
         <div className="space-y-4">
           {activities.map((item) => (
-            <ActivityCard key={item.id} item={item} />
+            <ActivityCard
+              key={item.id}
+              item={item}
+              reactions={getReactionsForItem(item)}
+              commentCount={getCommentCount(item)}
+              onToggleReaction={(emoji) => handleToggleReaction(item, emoji)}
+            />
           ))}
 
           {hasMore && (
@@ -291,12 +448,73 @@ function FeedTab() {
   );
 }
 
-function ActivityCard({ item }: { item: ActivityItem }) {
+function ActivityCard({
+  item,
+  reactions,
+  commentCount,
+  onToggleReaction,
+}: {
+  item: ActivityItem;
+  reactions: ReactionSummary[];
+  commentCount: number;
+  onToggleReaction: (emoji: string) => void;
+}) {
+  const { user } = useAuth();
+  const supabase = createClient();
   const isPost = item.activity_type === "post";
+  const [showPicker, setShowPicker] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<ActivityComment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function loadComments() {
+    setLoadingComments(true);
+    const { data } = await supabase.rpc("get_activity_comments", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_limit: 50,
+      p_offset: 0,
+    });
+    setComments((data as ActivityComment[]) ?? []);
+    setLoadingComments(false);
+  }
+
+  async function handleSubmitComment() {
+    if (!newComment.trim() || !user) return;
+    setSubmitting(true);
+    await supabase.rpc("add_activity_comment", {
+      p_activity_user_id: item.user_id,
+      p_isbn13: item.book_isbn13 ?? "",
+      p_activity_type: item.activity_type,
+      p_body: newComment.trim(),
+      p_parent_id: null,
+      p_mentions: [],
+      p_tagged_books: [],
+    });
+    setNewComment("");
+    setSubmitting(false);
+    await loadComments();
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    await supabase.rpc("delete_activity_comment", { p_comment_id: commentId });
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+  }
+
+  function handleToggleComments() {
+    if (!showComments) {
+      loadComments();
+    }
+    setShowComments(!showComments);
+  }
 
   return (
-    <div className="overflow-hidden rounded-(--radius-card) border border-border-subtle bg-bg-medium">
-      <div className="flex gap-4 p-4">
+    <div className="overflow-hidden rounded-(--radius-card) border border-border-subtle">
+      {/* Card content */}
+      <div className="flex gap-4 bg-bg-medium p-4">
         {/* Book cover (non-post activities) */}
         {!isPost && item.book_image && (
           <Link
@@ -363,6 +581,132 @@ function ActivityCard({ item }: { item: ActivityItem }) {
           )}
         </div>
       </div>
+
+      {/* Engagement bar */}
+      <div className="flex items-center gap-2 border-t border-border-subtle bg-[#2a2a2a] px-3 py-2">
+        {/* Reaction pills */}
+        {reactions
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 3)
+          .map((r) => (
+            <button
+              key={r.emoji}
+              onClick={() => onToggleReaction(r.emoji)}
+              className={`cursor-pointer rounded-full px-2 py-0.5 text-xs transition-colors ${
+                r.reacted_by_me
+                  ? "bg-accent text-white"
+                  : "bg-white/15 text-white"
+              }`}
+            >
+              {r.emoji} {r.count}
+            </button>
+          ))}
+
+        {/* Add reaction */}
+        <div className="relative">
+          <button
+            onClick={() => setShowPicker(!showPicker)}
+            className="cursor-pointer rounded-full bg-white/10 px-2 py-0.5 text-xs text-white transition-colors hover:bg-white/20"
+          >
+            +
+          </button>
+          {showPicker && (
+            <div className="absolute bottom-full left-0 z-10 mb-1 flex gap-1 rounded-lg bg-bg-light p-2 shadow-lg">
+              {REACTION_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => {
+                    onToggleReaction(emoji);
+                    setShowPicker(false);
+                  }}
+                  className="cursor-pointer rounded p-1 text-lg transition-colors hover:bg-bg-medium"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Comment button */}
+        <button
+          onClick={handleToggleComments}
+          className="flex cursor-pointer items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white transition-colors hover:bg-white/20"
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current">
+            <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z" />
+          </svg>
+          {commentCount > 0 && <span>{commentCount}</span>}
+        </button>
+      </div>
+
+      {/* Comments thread */}
+      {showComments && (
+        <div className="border-t border-border-subtle bg-bg-light p-3">
+          {loadingComments ? (
+            <p className="py-2 text-center text-xs text-text-muted">
+              Loading comments...
+            </p>
+          ) : comments.length === 0 ? (
+            <p className="py-2 text-center text-xs text-text-muted">
+              No comments yet.
+            </p>
+          ) : (
+            <div className="mb-3 space-y-3">
+              {comments.map((c) => (
+                <div key={c.id} className="flex gap-2">
+                  <Avatar
+                    url={c.author_avatar_url}
+                    name={c.author_display_name}
+                    size={28}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-xs font-semibold">
+                        {c.author_display_name ?? "User"}
+                      </span>
+                      <span className="text-[10px] text-text-subtle">
+                        {relativeTime(c.created_at)}
+                        {c.edited_at && " (edited)"}
+                      </span>
+                      {user && c.author_id === user.id && (
+                        <button
+                          onClick={() => handleDeleteComment(c.id)}
+                          className="cursor-pointer text-[10px] text-text-subtle transition-colors hover:text-error"
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-text-primary">{c.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add comment */}
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmitComment()}
+              placeholder="Add a comment..."
+              className="flex-1 rounded-(--radius-input) border border-border bg-bg-light px-3 py-2 font-serif text-xs outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
+            />
+            <button
+              onClick={handleSubmitComment}
+              disabled={!newComment.trim() || submitting}
+              className="cursor-pointer rounded-(--radius-input) bg-accent px-3 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+            >
+              {submitting ? "..." : "Post"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
