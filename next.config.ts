@@ -10,7 +10,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "images.isbndb.com",
+      },
+      {
+        protocol: "https",
+        hostname: "covers.openlibrary.org",
       },
     ],
   },
