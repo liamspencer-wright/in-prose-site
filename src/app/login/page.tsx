@@ -26,6 +26,20 @@ function LoginForm() {
   const nextPath = searchParams.get("next");
   const contextMessage = searchParams.get("message");
 
+  async function handleAppleSignIn() {
+    setError("");
+    const supabase = createClient();
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: "apple",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`,
+      },
+    });
+    if (oauthError) {
+      setError(oauthError.message);
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -89,6 +103,25 @@ function LoginForm() {
               : "Something went wrong. Please try again."}
           </p>
         )}
+
+        <div className="mb-4 flex flex-col gap-4">
+          <button
+            type="button"
+            onClick={handleAppleSignIn}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-input) bg-black px-6 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 17 20" fill="currentColor">
+              <path d="M13.545 10.239c-.022-2.234 1.823-3.306 1.906-3.358-.037-.054-1.494-1.422-1.906-1.76-.404-.331-1.218-.78-2.04-.78-.868 0-1.626.519-2.052.519-.433 0-1.09-.505-1.793-.491-.923.014-1.774.537-2.249 1.364-1.585 2.747-.405 6.816 1.139 9.046.754 1.091 1.655 2.316 2.838 2.272 1.139-.046 1.568-.737 2.945-.737 1.37 0 1.764.737 2.945.714 1.225-.019 2.002-1.112 2.748-2.208.866-1.266 1.224-2.491 1.245-2.554-.027-.012-2.388-.916-2.412-3.636l-.014-.191zM11.2 3.2C11.84 2.424 12.28 1.36 12.16.28 11.24.32 10.12.9 9.44 1.66 8.84 2.34 8.3 3.42 8.44 4.46c1.02.08 2.06-.46 2.76-1.26z"/>
+            </svg>
+            Sign in with Apple
+          </button>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border-subtle" />
+            <span className="text-sm text-text-muted">or</span>
+            <div className="h-px flex-1 bg-border-subtle" />
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <input
