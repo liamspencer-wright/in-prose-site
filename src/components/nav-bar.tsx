@@ -11,7 +11,7 @@ export function NavBar() {
   if (user) return null;
 
   return (
-    <nav className="flex items-center justify-between px-6 py-4 max-sm:px-4">
+    <nav aria-label="Main navigation" className="flex items-center justify-between px-6 py-4 max-sm:px-4">
       <Link href="/">
         <Image
           src="/logo.png"
