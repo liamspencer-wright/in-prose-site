@@ -27,6 +27,9 @@ type ReadingTarget = {
   deadline_at: string | null;
   cadence_unit: string | null;
   cadence_value: number;
+  anchor_weekday: number | null;
+  anchor_day: number | null;
+  anchor_month: number | null;
   is_home_featured: boolean;
 };
 
@@ -83,10 +86,7 @@ export function Dashboard() {
     load();
   }, [user, supabase]);
 
-  async function updateBookStatus(
-    isbn13: string,
-    newStatus: string
-  ) {
+  async function updateBookStatus(isbn13: string, newStatus: string) {
     const now = new Date().toISOString();
     const update: Record<string, string | null> = { status: newStatus };
 
@@ -210,6 +210,14 @@ function TbrSection({
               onDelete={() => onDelete(book.isbn13)}
             />
           ))}
+
+          {/* View more link at end of carousel */}
+          <Link
+            href="/library?status=to_read"
+            className="flex h-[120px] w-[80px] flex-shrink-0 items-center justify-center rounded-lg bg-white/20 text-center text-xs font-semibold text-white transition-colors hover:bg-white/30"
+          >
+            View all &rarr;
+          </Link>
         </div>
       )}
     </div>
@@ -386,9 +394,17 @@ function DeadlineTargetCard({
   })();
 
   const pace: "ahead" | "on_target" | "behind" =
-    pct >= expectedPct + 5 ? "ahead" : pct >= expectedPct - 5 ? "on_target" : "behind";
+    pct >= expectedPct + 5
+      ? "ahead"
+      : pct >= expectedPct - 5
+        ? "on_target"
+        : "behind";
 
-  const paceLabel = { ahead: "Ahead", on_target: "On target", behind: "Behind" }[pace];
+  const paceLabel = {
+    ahead: "Ahead",
+    on_target: "On target",
+    behind: "Behind",
+  }[pace];
   const paceColor = {
     ahead: "bg-green-100 text-green-700",
     on_target: "bg-orange-100 text-accent",
@@ -403,7 +419,9 @@ function DeadlineTargetCard({
           {target.deadline_at &&
             ` by ${new Date(target.deadline_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`}
         </span>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${paceColor}`}>
+        <span
+          className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${paceColor}`}
+        >
           {paceLabel}
         </span>
       </div>
@@ -446,11 +464,18 @@ function RollingTargetCard({
   pct: number;
   finishedBooks: DashboardBook[];
 }) {
+  const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const history = computeHistory(target, finishedBooks);
   const recentHistory = history.slice(0, 6);
 
-  const maxCount = Math.max(target.goal, ...recentHistory.map((h) => h.count));
+  const maxCount = Math.max(
+    target.goal,
+    ...recentHistory.map((h) => h.count)
+  );
   const cadenceLabel = target.cadence_unit ?? "period";
+
+  // Reverse so oldest is on the left
+  const displayHistory = recentHistory.slice().reverse();
 
   return (
     <div>
@@ -463,45 +488,100 @@ function RollingTargetCard({
         </span>
       </div>
 
-      {/* Bar chart of recent periods */}
-      {recentHistory.length > 1 && (
-        <div className="mb-3 flex items-end gap-1.5" style={{ height: "80px" }}>
-          {recentHistory
-            .slice()
-            .reverse()
-            .map((h, i) => {
-              const barHeight =
-                maxCount > 0 ? Math.max(4, (h.count / maxCount) * 100) : 4;
-              const meetsGoal = h.count >= target.goal;
-              return (
+      {/* Horizontal layout: bar chart left, circular progress right */}
+      <div className="flex items-center gap-6">
+        {/* Bar chart */}
+        {displayHistory.length > 1 && (
+          <div className="flex-1">
+            <div className="relative flex items-end gap-1.5" style={{ height: "100px" }}>
+              {displayHistory.map((h, i) => {
+                const barHeight =
+                  maxCount > 0
+                    ? Math.max(4, (h.count / maxCount) * 100)
+                    : 4;
+                const meetsGoal = h.count >= target.goal;
+                const isHovered = hoveredBar === i;
+                return (
+                  <div
+                    key={i}
+                    className="relative flex-1"
+                    style={{
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "flex-end",
+                    }}
+                    onMouseEnter={() => setHoveredBar(i)}
+                    onMouseLeave={() => setHoveredBar(null)}
+                  >
+                    <div
+                      className={`w-full rounded-t transition-all ${
+                        meetsGoal ? "bg-green-400" : "bg-accent/60"
+                      } ${isHovered ? "opacity-80" : ""}`}
+                      style={{ height: `${barHeight}%` }}
+                    />
+                    {/* Hover tooltip */}
+                    {isHovered && (
+                      <div className="absolute -top-8 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-text-primary px-2 py-1 text-[10px] font-bold text-white shadow">
+                        {h.count} {target.unit}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Goal line */}
+              {maxCount > 0 && (
+                <div
+                  className="pointer-events-none absolute right-0 left-0 border-t border-dashed border-text-muted/40"
+                  style={{
+                    bottom: `${(target.goal / maxCount) * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+
+            {/* X-axis labels */}
+            <div className="mt-1 flex gap-1.5">
+              {displayHistory.map((h, i) => (
                 <div
                   key={i}
-                  className="flex-1"
-                  style={{ height: "100%", display: "flex", alignItems: "flex-end" }}
+                  className="flex-1 text-center text-[9px] text-text-subtle"
                 >
-                  <div
-                    className={`w-full rounded-t transition-all ${
-                      meetsGoal ? "bg-green-400" : "bg-accent/60"
-                    }`}
-                    style={{ height: `${barHeight}%` }}
-                    title={`${h.count} ${target.unit}`}
-                  />
+                  {formatPeriodLabel(h.start, target.cadence_unit)}
                 </div>
-              );
-            })}
-          {/* Goal line */}
-        </div>
-      )}
+              ))}
+            </div>
+          </div>
+        )}
 
-      {/* Circular progress for current period */}
-      <div className="flex items-center justify-center">
-        <CircularProgress pct={pct} size={80}>
-          <span className="text-lg font-bold">{progress}</span>
-          <span className="text-[10px] text-text-muted">/ {target.goal}</span>
-        </CircularProgress>
+        {/* Circular progress for current period */}
+        <div className="flex flex-shrink-0 flex-col items-center">
+          <CircularProgress pct={pct} size={80}>
+            <span className="text-lg font-bold">{progress}</span>
+            <span className="text-[10px] text-text-muted">/ {target.goal}</span>
+          </CircularProgress>
+          <span className="mt-1 text-[10px] text-text-subtle">
+            This {cadenceLabel}
+          </span>
+        </div>
       </div>
     </div>
   );
+}
+
+function formatPeriodLabel(date: Date, cadenceUnit: string | null): string {
+  switch (cadenceUnit) {
+    case "day":
+      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    case "week":
+      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    case "month":
+      return date.toLocaleDateString("en-GB", { month: "short" });
+    case "year":
+      return date.getFullYear().toString();
+    default:
+      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  }
 }
 
 function CircularProgress({
@@ -655,7 +735,8 @@ function CurrentlyReadingCard({
         {startedLabel && (
           <span className="text-xs text-white/60">
             Started {startedLabel}
-            {daysReading && ` \u00b7 ${daysReading} ${daysReading === 1 ? "day" : "days"}`}
+            {daysReading &&
+              ` \u00b7 ${daysReading} ${daysReading === 1 ? "day" : "days"}`}
           </span>
         )}
       </div>
@@ -679,7 +760,7 @@ function CurrentlyReadingCard({
   );
 }
 
-// ─── Progress computation ───────────────────────────────────────────────────
+// ─── Progress computation (matching iOS app logic) ──────────────────────────
 
 function computeProgress(
   target: ReadingTarget,
@@ -697,7 +778,7 @@ function computeProgress(
       );
     }
 
-    // Rolling: current window
+    // Rolling: current window start (anchor-aware, matching iOS app)
     const windowStart = getRollingWindowStart(target);
     return windowStart ? finishedAt >= windowStart : false;
   });
@@ -718,9 +799,10 @@ function computeHistory(
   const startedAt = new Date(target.started_at);
   const windows: { start: Date; end: Date }[] = [];
 
+  // Walk forward from startedAt, matching iOS historicalWindows()
   let windowStart = new Date(startedAt);
   while (windowStart < now) {
-    const nextStart = addPeriod(
+    const nextStart = addCalendarPeriod(
       windowStart,
       target.cadence_unit,
       target.cadence_value
@@ -737,6 +819,7 @@ function computeHistory(
     windows.push({ start: startedAt, end: now });
   }
 
+  // Newest first (matching iOS)
   return windows.reverse().map((w) => {
     const qualifying = finishedBooks.filter((b) => {
       if (!b.finished_at) return false;
@@ -751,17 +834,73 @@ function computeHistory(
   });
 }
 
+/**
+ * Get the start of the current rolling window, matching the iOS app's
+ * rollingWindowStart logic which accounts for anchor days.
+ */
 function getRollingWindowStart(target: ReadingTarget): Date | null {
   if (target.kind !== "rolling" || !target.cadence_unit) return null;
+
   const now = new Date();
-  return addPeriod(now, target.cadence_unit, -target.cadence_value);
+  const value = target.cadence_value;
+
+  switch (target.cadence_unit) {
+    case "day": {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      start.setDate(start.getDate() - value);
+      return start;
+    }
+    case "week": {
+      if (target.anchor_weekday) {
+        // Anchor to specific weekday (1=Sun, 2=Mon, ... 7=Sat in iOS; JS: 0=Sun..6=Sat)
+        const jsWeekday = target.anchor_weekday - 1; // Convert to JS convention
+        const anchor = new Date(now);
+        anchor.setHours(0, 0, 0, 0);
+        const currentDay = anchor.getDay();
+        const diff = currentDay - jsWeekday;
+        anchor.setDate(anchor.getDate() - (diff >= 0 ? diff : diff + 7));
+        // If anchor is in the future, step back one cycle
+        if (anchor > now) {
+          anchor.setDate(anchor.getDate() - 7 * value);
+        }
+        return anchor;
+      }
+      // Default: start of current week minus value weeks
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const dayOfWeek = start.getDay();
+      start.setDate(start.getDate() - dayOfWeek); // Start of week (Sunday)
+      start.setDate(start.getDate() - 7 * (value - 1));
+      return start;
+    }
+    case "month": {
+      const day = target.anchor_day ?? 1;
+      const anchor = new Date(now.getFullYear(), now.getMonth(), day, 0, 0, 0, 0);
+      if (anchor > now) {
+        anchor.setMonth(anchor.getMonth() - value);
+      }
+      return anchor;
+    }
+    case "year": {
+      const month = (target.anchor_month ?? 1) - 1; // JS months are 0-based
+      const day = target.anchor_day ?? 1;
+      const anchor = new Date(now.getFullYear(), month, day, 0, 0, 0, 0);
+      if (anchor > now) {
+        anchor.setFullYear(anchor.getFullYear() - value);
+      }
+      return anchor;
+    }
+    default:
+      return null;
+  }
 }
 
-function addPeriod(
-  date: Date,
-  unit: string,
-  value: number
-): Date {
+/**
+ * Add a calendar period to a date, using proper calendar arithmetic
+ * (matching iOS Calendar.date(byAdding:value:to:))
+ */
+function addCalendarPeriod(date: Date, unit: string, value: number): Date {
   const result = new Date(date);
   switch (unit) {
     case "day":
