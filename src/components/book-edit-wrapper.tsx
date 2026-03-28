@@ -323,8 +323,8 @@ export function BookEditWrapper({
                   }}
                   className="flex-1 accent-accent"
                 />
-                <span className="w-12 text-center text-lg font-semibold">
-                  {rating ?? "—"}/10
+                <span className="flex w-16 items-center justify-center gap-1 text-lg font-semibold text-accent">
+                  ★ {rating !== null ? Number(rating).toFixed(1) : "—"}
                 </span>
               </div>
             </FieldGroup>

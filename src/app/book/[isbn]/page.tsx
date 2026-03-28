@@ -199,7 +199,7 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
                   </span>
                 )}
                 {sharer.rating !== null && sharer.rating > 0 && (
-                  <span>&middot; Rated {sharer.rating}/10</span>
+                  <span>&middot; ★ {Number(sharer.rating).toFixed(1)}</span>
                 )}
               </div>
               {sharer.review && (

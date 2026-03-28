@@ -304,7 +304,7 @@ function DetailsTab({ book }: { book: BookDetail }) {
           <MetaRow label="Pages" value={String(book.pages)} />
         )}
         {book.avg_rating !== null && (
-          <MetaRow label="Community avg" value={`${book.avg_rating.toFixed(1)}/10`} />
+          <MetaRow label="Community avg" value={`★ ${book.avg_rating.toFixed(1)}`} />
         )}
       </div>
 
@@ -457,8 +457,8 @@ function EditTab({
                 }}
                 className="flex-1 accent-accent"
               />
-              <span className="w-12 text-center text-lg font-semibold">
-                {rating ?? "—"}/10
+              <span className="flex w-16 items-center justify-center gap-1 text-lg font-semibold text-accent">
+                <span>★</span> {rating !== null ? rating.toFixed(1) : "—"}
               </span>
             </div>
           </FieldGroup>
@@ -556,7 +556,6 @@ const PUBLIC_PAGE_SIZE = 10;
 
 function CommunityTab({ book }: { book: BookDetail }) {
   const { user } = useAuth();
-  const supabase = createClient();
 
   const [stats, setStats] = useState<BookStats | null>(null);
   const [friendsWithBook, setFriendsWithBook] = useState<FriendWithBook[]>([]);
@@ -569,36 +568,42 @@ function CommunityTab({ book }: { book: BookDetail }) {
     if (!user) return;
 
     async function load() {
-      const [statsRes, friendsRes, publicRes] = await Promise.all([
-        supabase
-          .from("book_stats_expanded")
-          .select("avg_rating, num_reviews")
-          .eq("isbn13", book.isbn13)
-          .maybeSingle(),
-        supabase.rpc("get_friends_with_book", {
-          p_isbn13: book.isbn13,
-          p_exclude_user_id: user!.id,
-        }),
-        supabase.rpc("get_public_reviews_for_book", {
-          p_isbn13: book.isbn13,
-          p_limit: PUBLIC_PAGE_SIZE,
-          p_offset: 0,
-        }),
-      ]);
+      const supabase = createClient();
+
+      const statsRes = await supabase
+        .from("book_stats_expanded")
+        .select("avg_rating, num_reviews")
+        .eq("isbn13", book.isbn13)
+        .maybeSingle();
+
+      const friendsRes = await supabase.rpc("get_friends_with_book", {
+        p_isbn13: book.isbn13,
+      });
 
       setStats((statsRes.data as BookStats) ?? null);
       setFriendsWithBook((friendsRes.data as FriendWithBook[]) ?? []);
-      const pubResults = (publicRes.data as PublicReview[]) ?? [];
-      setPublicReviews(pubResults);
-      setHasMorePublic(pubResults.length === PUBLIC_PAGE_SIZE);
+
+      const publicRes = await supabase.rpc("get_public_reviews_for_book", {
+        p_isbn13: book.isbn13,
+        p_limit: PUBLIC_PAGE_SIZE,
+        p_offset: 0,
+      });
+
+      if (publicRes.data) {
+        const pubResults = publicRes.data as PublicReview[];
+        setPublicReviews(pubResults);
+        setHasMorePublic(pubResults.length === PUBLIC_PAGE_SIZE);
+      }
+
       setLoading(false);
     }
 
     load();
-  }, [user, book.isbn13, supabase]);
+  }, [user, book.isbn13]);
 
   async function loadMorePublic() {
     setLoadingPublicMore(true);
+    const supabase = createClient();
     const { data } = await supabase.rpc("get_public_reviews_for_book", {
       p_isbn13: book.isbn13,
       p_limit: PUBLIC_PAGE_SIZE,
@@ -614,14 +619,12 @@ function CommunityTab({ book }: { book: BookDetail }) {
     return <p className="py-12 text-center text-text-muted">Loading...</p>;
   }
 
+  const friendsWhoRead = friendsWithBook.filter(
+    (f) => f.status === "finished" || f.rating !== null || (f.review && f.review.trim() !== "")
+  );
   const friendReviews = friendsWithBook.filter(
     (f) => f.rating !== null || (f.review && f.review.trim() !== "")
   );
-  const friendAvgRating =
-    friendReviews.length > 0
-      ? friendReviews.reduce((sum, f) => sum + (f.rating ?? 0), 0) /
-        friendReviews.filter((f) => f.rating !== null).length
-      : null;
 
   const noContent =
     !stats?.avg_rating && friendsWithBook.length === 0 && publicReviews.length === 0;
@@ -636,60 +639,51 @@ function CommunityTab({ book }: { book: BookDetail }) {
 
   return (
     <div className="space-y-8">
-      {/* Community rating badge */}
-      {stats?.avg_rating !== null && stats?.avg_rating !== undefined && (
-        <div className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-6 text-center">
-          <p className="text-4xl font-bold text-accent">
-            {stats.avg_rating.toFixed(1)}
-          </p>
-          <p className="mt-1 text-sm text-text-muted">
-            Community average{" "}
-            {stats.num_reviews
-              ? `· ${stats.num_reviews} review${stats.num_reviews !== 1 ? "s" : ""}`
-              : ""}
-          </p>
-        </div>
-      )}
+      {/* Community rating badge + friends stats */}
+      <div className="text-center">
+        {stats?.avg_rating !== null && stats?.avg_rating !== undefined && (
+          <div className="mb-4 inline-block rounded-(--radius-card) bg-bg-medium px-8 py-5">
+            <p className="flex items-center justify-center gap-1.5 text-3xl font-bold text-accent">
+              <span>★</span> {stats.avg_rating.toFixed(1)}
+            </p>
+            <p className="mt-1 text-sm text-text-muted">
+              {stats.num_reviews
+                ? `${stats.num_reviews} review${stats.num_reviews !== 1 ? "s" : ""}`
+                : ""}
+            </p>
+          </div>
+        )}
 
-      {/* Friends reading stats */}
-      {friendsWithBook.length > 0 && (
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="flex -space-x-2">
-              {friendsWithBook.slice(0, 5).map((f) => (
+        {friendsWhoRead.length > 0 && (
+          <div>
+            <p className="mb-2 text-sm font-semibold">
+              {friendsWhoRead.length} friend
+              {friendsWhoRead.length !== 1 ? "s" : ""} ha
+              {friendsWhoRead.length !== 1 ? "ve" : "s"} read this book
+            </p>
+            <div className="flex justify-center -space-x-3">
+              {friendsWhoRead.slice(0, 5).map((f) => (
                 <Avatar
                   key={f.user_id}
                   url={f.avatar_url}
                   name={f.display_name}
-                  size={32}
+                  size={44}
                 />
               ))}
-              {friendsWithBook.length > 5 && (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-bg-light bg-bg-medium text-xs font-semibold text-text-muted">
-                  +{friendsWithBook.length - 5}
+              {friendsWhoRead.length > 5 && (
+                <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-bg-light bg-bg-medium text-xs font-semibold text-text-muted">
+                  +{friendsWhoRead.length - 5}
                 </div>
               )}
             </div>
-            <p className="text-sm text-text-muted">
-              {friendsWithBook.length} friend
-              {friendsWithBook.length !== 1 ? "s" : ""} ha
-              {friendsWithBook.length !== 1 ? "ve" : "s"} this book
-            </p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Friends' Reviews */}
       {friendReviews.length > 0 ? (
         <div>
-          <div className="mb-3 flex items-baseline justify-between">
-            <h2 className="text-lg font-bold">Friends&apos; Reviews</h2>
-            {friendAvgRating !== null && !isNaN(friendAvgRating) && (
-              <span className="text-sm text-text-muted">
-                Avg {friendAvgRating.toFixed(1)}/10
-              </span>
-            )}
-          </div>
+          <h2 className="mb-3 text-lg font-bold">Friends&apos; Reviews</h2>
           <div className="space-y-3">
             {friendReviews.map((f) => (
               <ReviewCard
@@ -755,19 +749,20 @@ function Avatar({
   name: string;
   size?: number;
 }) {
-  const sizeClass = size === 32 ? "h-8 w-8" : "h-10 w-10";
-  const textClass = size === 32 ? "text-xs" : "text-sm";
+  const sizeClass =
+    size <= 32 ? "h-8 w-8" : size <= 40 ? "h-10 w-10" : "h-11 w-11";
+  const textClass = size <= 32 ? "text-xs" : "text-sm";
 
   return url ? (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={url}
       alt={name}
-      className={`${sizeClass} rounded-full border-2 border-bg-light object-cover`}
+      className={`${sizeClass} rounded-full object-cover`}
     />
   ) : (
     <div
-      className={`${sizeClass} flex items-center justify-center rounded-full border-2 border-bg-light bg-accent/15 ${textClass} font-bold text-accent`}
+      className={`${sizeClass} flex items-center justify-center rounded-full bg-accent/15 ${textClass} font-bold text-accent`}
     >
       {name?.[0]?.toUpperCase() ?? "?"}
     </div>
@@ -795,28 +790,30 @@ function ReviewCard({
   const hasSpoiler = reviewSpoiler && review && !spoilerRevealed;
 
   return (
-    <div className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4">
+    <div className="rounded-(--radius-card) bg-accent-blue p-4">
       <div className="mb-2 flex items-center gap-2">
         <Link href={`/friends/${userId}`}>
-          <Avatar url={avatarUrl} name={displayName} />
+          <Avatar url={avatarUrl} name={displayName} size={40} />
         </Link>
         <div className="flex-1">
           <Link
             href={`/friends/${userId}`}
-            className="text-sm font-semibold hover:underline"
+            className="font-semibold text-text-on-accent hover:underline"
           >
             {displayName}
           </Link>
-          <p className="text-xs text-text-subtle">{formatDate(createdAt)}</p>
+          <p className="text-xs text-text-on-accent/60">Finished</p>
         </div>
         {rating !== null && (
-          <span className="text-sm font-semibold text-accent">{rating}/10</span>
+          <span className="flex items-center gap-1 text-lg font-bold text-accent">
+            <span>★</span> {rating.toFixed(1)}
+          </span>
         )}
       </div>
       {review && (
         <div className="relative">
           <p
-            className={`text-sm leading-relaxed text-text-muted ${
+            className={`text-sm leading-relaxed text-text-on-accent/85 ${
               hasSpoiler ? "select-none blur-sm" : ""
             }`}
           >
@@ -825,13 +822,14 @@ function ReviewCard({
           {hasSpoiler && (
             <button
               onClick={() => setSpoilerRevealed(true)}
-              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded bg-bg-medium/60 text-sm font-semibold text-text-primary transition-colors hover:bg-bg-medium/80"
+              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded bg-accent-blue/80 text-sm font-semibold text-text-on-accent transition-colors hover:bg-accent-blue/90"
             >
               Contains spoilers — click to reveal
             </button>
           )}
         </div>
       )}
+      <p className="mt-2 text-xs text-text-on-accent/50">{formatDate(createdAt)}</p>
     </div>
   );
 }

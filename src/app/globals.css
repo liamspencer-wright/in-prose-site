@@ -11,6 +11,8 @@
   --color-error: #c0392b;
   --color-border: rgba(27, 27, 27, 0.1);
   --color-border-subtle: rgba(27, 27, 27, 0.06);
+  --color-accent-blue: #203150;
+  --color-text-on-accent: #F8EEE1;
 
   --font-serif: "Crimson Text", serif;
 

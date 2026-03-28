@@ -185,8 +185,8 @@ function ActivityCard({ item }: { item: ActivityItem }) {
         <div>
           <p className="font-semibold leading-tight">{item.title}</p>
           {item.rating !== null && (
-            <p className="mt-0.5 text-sm text-accent">
-              {item.rating}/10
+            <p className="mt-0.5 flex items-center gap-0.5 text-sm text-accent">
+              ★ {Number(item.rating).toFixed(1)}
             </p>
           )}
           {item.review && (
