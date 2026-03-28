@@ -1,0 +1,16 @@
+{
+  "name": "in prose – Books and data — perfectly bound.",
+  "short_name": "in prose",
+  "icons": [
+    {
+      "src": "/inprose-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "theme_color": "#fbf1ec",
+  "background_color": "#fbf1ec",
+  "display": "standalone",
+  "start_url": "/"
+}
