@@ -164,11 +164,7 @@ export function Dashboard() {
           onDelete={deleteBook}
         />
         <TargetsSection targets={targets} finishedBooks={finishedBooks} />
-        <CurrentlyReadingSection
-          books={readingBooks}
-          onFinish={(isbn) => updateBookStatus(isbn, "finished")}
-          onDnf={(isbn) => updateBookStatus(isbn, "dnf")}
-        />
+        <CurrentlyReadingSection books={readingBooks} />
       </div>
     </div>
   );
@@ -466,16 +462,17 @@ function RollingTargetCard({
 }) {
   const [hoveredBar, setHoveredBar] = useState<number | null>(null);
   const history = computeHistory(target, finishedBooks);
-  const recentHistory = history.slice(0, 6);
+  // Skip the first entry (current period) — that's shown in the ring
+  const pastHistory = history.slice(1, 7);
 
   const maxCount = Math.max(
     target.goal,
-    ...recentHistory.map((h) => h.count)
+    ...pastHistory.map((h) => h.count)
   );
   const cadenceLabel = target.cadence_unit ?? "period";
 
   // Reverse so oldest is on the left
-  const displayHistory = recentHistory.slice().reverse();
+  const displayHistory = pastHistory.slice().reverse();
 
   return (
     <div>
@@ -491,7 +488,7 @@ function RollingTargetCard({
       {/* Horizontal layout: bar chart left, circular progress right */}
       <div className="flex items-center gap-6">
         {/* Bar chart */}
-        {displayHistory.length > 1 && (
+        {displayHistory.length > 0 && (
           <div className="flex-1">
             <div className="relative flex items-end gap-1.5" style={{ height: "100px" }}>
               {displayHistory.map((h, i) => {
@@ -633,12 +630,8 @@ function CircularProgress({
 
 function CurrentlyReadingSection({
   books,
-  onFinish,
-  onDnf,
 }: {
   books: DashboardBook[];
-  onFinish: (isbn: string) => void;
-  onDnf: (isbn: string) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -652,11 +645,7 @@ function CurrentlyReadingSection({
         </p>
       ) : (
         <>
-          <CurrentlyReadingCard
-            book={books[activeIndex]}
-            onFinish={() => onFinish(books[activeIndex].isbn13)}
-            onDnf={() => onDnf(books[activeIndex].isbn13)}
-          />
+          <CurrentlyReadingCard book={books[activeIndex]} />
 
           {books.length > 1 && (
             <div className="mt-3 flex justify-center gap-1.5">
@@ -679,12 +668,8 @@ function CurrentlyReadingSection({
 
 function CurrentlyReadingCard({
   book,
-  onFinish,
-  onDnf,
 }: {
   book: DashboardBook;
-  onFinish: () => void;
-  onDnf: () => void;
 }) {
   const daysReading = book.started_at
     ? Math.max(
@@ -704,25 +689,36 @@ function CurrentlyReadingCard({
     : null;
 
   return (
-    <div className="flex items-center gap-4 rounded-xl bg-white/10 p-4">
-      {/* Cover */}
-      <Link href={`/library/${book.isbn13}`} className="flex-shrink-0">
-        {book.cover_url ? (
+    <div className="flex items-stretch overflow-hidden rounded-xl">
+      {/* Left: blurred cover background */}
+      <div className="relative flex w-24 flex-shrink-0 items-center justify-center overflow-hidden">
+        {book.cover_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={book.cover_url}
-            alt={book.title ?? ""}
-            className="h-[100px] w-[68px] rounded-lg object-cover shadow-md"
+            alt=""
+            className="absolute inset-0 h-full w-full scale-150 object-cover blur-xl"
           />
-        ) : (
-          <div className="flex h-[100px] w-[68px] items-center justify-center rounded-lg bg-white/20 p-2 text-center text-xs font-semibold text-white shadow-md">
-            {book.title ?? "Unknown"}
-          </div>
         )}
-      </Link>
+        <div className="absolute inset-0 bg-black/20" />
+        <Link href={`/library/${book.isbn13}`} className="relative z-10">
+          {book.cover_url ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={book.cover_url}
+              alt={book.title ?? ""}
+              className="h-[100px] w-[68px] rounded-lg object-cover shadow-md"
+            />
+          ) : (
+            <div className="flex h-[100px] w-[68px] items-center justify-center rounded-lg bg-white/20 p-2 text-center text-xs font-semibold text-white shadow-md">
+              {book.title ?? "Unknown"}
+            </div>
+          )}
+        </Link>
+      </div>
 
-      {/* Info */}
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      {/* Middle: info */}
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4 py-4">
         <Link
           href={`/library/${book.isbn13}`}
           className="truncate text-sm font-bold text-white hover:underline"
@@ -741,20 +737,20 @@ function CurrentlyReadingCard({
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-shrink-0 flex-col gap-2">
-        <button
-          onClick={onFinish}
-          className="cursor-pointer rounded-lg bg-green-500 px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-80"
-        >
-          Finish
-        </button>
-        <button
-          onClick={onDnf}
-          className="cursor-pointer rounded-lg bg-error px-3 py-1.5 text-xs font-bold text-white transition-opacity hover:opacity-80"
+      {/* Right: action buttons (DNF top, Finish bottom — matching app) */}
+      <div className="flex flex-shrink-0 flex-col">
+        <Link
+          href={`/library/${book.isbn13}?tab=edit&status=dnf`}
+          className="flex flex-1 items-center justify-center bg-error px-5 text-xs font-bold text-white transition-opacity hover:opacity-80"
         >
           DNF
-        </button>
+        </Link>
+        <Link
+          href={`/library/${book.isbn13}?tab=edit&status=finished`}
+          className="flex flex-1 items-center justify-center bg-green-500 px-5 text-xs font-bold text-white transition-opacity hover:opacity-80"
+        >
+          Finish
+        </Link>
       </div>
     </div>
   );

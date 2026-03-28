@@ -70,13 +70,15 @@ function BookDetailContent() {
   const isbn = params.isbn as string;
   const searchParams = useSearchParams();
   const from = searchParams.get("from");
+  const initialTab = (searchParams.get("tab") as Tab) || "details";
+  const initialStatus = searchParams.get("status");
   const { user } = useAuth();
   const router = useRouter();
   const supabase = createClient();
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("details");
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Editable fields
   const [status, setStatus] = useState("");
@@ -108,13 +110,18 @@ function BookDetailContent() {
 
       const b = data as BookDetail;
       setBook(b);
-      setStatus(b.status ?? "to_read");
+      // If a status was passed via URL (e.g. from dashboard Finish/DNF), pre-select it
+      setStatus(initialStatus ?? b.status ?? "to_read");
       setOwnership(b.ownership ?? "not_owned");
       setVisibility(b.visibility ?? "public");
       setRating(b.rating);
       setReview(b.review ?? "");
       setStartedAt(b.started_at ? b.started_at.slice(0, 10) : "");
-      setFinishedAt(b.finished_at ? b.finished_at.slice(0, 10) : "");
+      if (initialStatus === "finished" || initialStatus === "dnf") {
+        setFinishedAt(new Date().toISOString().slice(0, 10));
+      } else {
+        setFinishedAt(b.finished_at ? b.finished_at.slice(0, 10) : "");
+      }
       setLoading(false);
     }
 
