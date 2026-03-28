@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Crimson_Text } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
 import { AppShell } from "@/components/app-shell";
+import { CookieConsent } from "@/components/cookie-consent";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -34,6 +35,7 @@ export const metadata: Metadata = {
     description:
       "Track what you read, see how your friends read, and discover your next favourite book.",
   },
+  manifest: "/site.webmanifest",
   robots: {
     index: true,
     follow: true,
@@ -52,6 +54,7 @@ export default function RootLayout({
       >
         <AuthProvider>
           <AppShell>{children}</AppShell>
+          <CookieConsent />
         </AuthProvider>
       </body>
     </html>
