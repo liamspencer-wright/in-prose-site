@@ -163,7 +163,7 @@ function activityText(type: string): string {
   }
 }
 
-type BottomView = "feed" | "library";
+type BottomView = "feed" | "library" | "common";
 
 export default function FriendProfilePage() {
   const { user } = useAuth();
@@ -181,7 +181,6 @@ export default function FriendProfilePage() {
   const [reactions, setReactions] = useState<ReactionSummary[]>([]);
   const [commentCounts, setCommentCounts] = useState<CommentCount[]>([]);
   const [booksInCommon, setBooksInCommon] = useState<BookInCommon[]>([]);
-  const [showBooksInCommon, setShowBooksInCommon] = useState(false);
   const [bottomView, setBottomView] = useState<BottomView>("feed");
   const [libraryBooks, setLibraryBooks] = useState<LibraryBook[]>([]);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
@@ -516,29 +515,6 @@ export default function FriendProfilePage() {
       {/* Friend content */}
       {isFriend && (
         <>
-          {/* Action buttons */}
-          <div className="mb-6 grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setBottomView("library")}
-              className="flex cursor-pointer flex-col items-center gap-1 rounded-(--radius-card) bg-accent p-4 text-white transition-opacity hover:opacity-88"
-            >
-              <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current">
-                <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z" />
-              </svg>
-              <span className="text-xs font-semibold">Library</span>
-            </button>
-            <button
-              onClick={() => setShowBooksInCommon(true)}
-              className="flex cursor-pointer flex-col items-center gap-1 rounded-(--radius-card) bg-accent p-4 text-white transition-opacity hover:opacity-88"
-            >
-              <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
-              </svg>
-              <span className="text-xs font-semibold">
-                In Common ({booksInCommon.length})
-              </span>
-            </button>
-          </div>
 
           {/* Currently reading — matching public profile style */}
           {currentlyReading.length > 0 && (
@@ -631,28 +607,27 @@ export default function FriendProfilePage() {
             </section>
           )}
 
-          {/* Feed / Library toggle */}
+          {/* Activity / Library / In Common toggle */}
           <div className="mb-4 flex rounded-full border border-border bg-bg-medium p-1">
-            <button
-              onClick={() => setBottomView("feed")}
-              className={`flex-1 cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
-                bottomView === "feed"
-                  ? "bg-accent text-white"
-                  : "text-text-muted hover:text-text-primary"
-              }`}
-            >
-              Activity
-            </button>
-            <button
-              onClick={() => setBottomView("library")}
-              className={`flex-1 cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
-                bottomView === "library"
-                  ? "bg-accent text-white"
-                  : "text-text-muted hover:text-text-primary"
-              }`}
-            >
-              Library ({libraryBooks.length})
-            </button>
+            {(
+              [
+                { key: "feed", label: "Activity" },
+                { key: "library", label: `Library` },
+                { key: "common", label: `In Common` },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setBottomView(tab.key)}
+                className={`flex-1 cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
+                  bottomView === tab.key
+                    ? "bg-accent text-white"
+                    : "text-text-muted hover:text-text-primary"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {/* Feed view */}
@@ -715,75 +690,61 @@ export default function FriendProfilePage() {
               )}
             </div>
           )}
-        </>
-      )}
 
-      {/* Books in common modal */}
-      {showBooksInCommon && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-20">
-          <div className="w-full max-w-lg rounded-(--radius-card) bg-bg-light p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-xl font-bold">Books in common</h2>
-              <button
-                onClick={() => setShowBooksInCommon(false)}
-                className="cursor-pointer rounded-full p-1.5 transition-colors hover:bg-bg-medium"
-              >
-                <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-                </svg>
-              </button>
+          {/* Books in common view */}
+          {bottomView === "common" && (
+            <div>
+              {booksInCommon.length === 0 ? (
+                <p className="py-8 text-center text-text-muted">
+                  No books in common yet.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {booksInCommon.map((book) => (
+                    <Link
+                      key={book.isbn13}
+                      href={`/library/${book.isbn13}`}
+                      className="flex items-center gap-3 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-3 transition-colors hover:border-accent"
+                    >
+                      {book.cover_url ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={book.cover_url}
+                          alt=""
+                          className="h-16 w-11 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-16 w-11 items-center justify-center rounded bg-bg-light">
+                          <span className="text-[8px] text-text-subtle">
+                            No cover
+                          </span>
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold">
+                          {book.title ?? "Untitled"}
+                        </p>
+                        <div className="mt-1 flex flex-wrap gap-x-4 text-xs text-text-muted">
+                          <span>
+                            You: {friendlyStatus(book.your_status)}
+                            {book.your_rating != null &&
+                              ` · ${book.your_rating}/10`}
+                          </span>
+                          <span>
+                            {profile?.display_name ?? "Friend"}:{" "}
+                            {friendlyStatus(book.friend_status)}
+                            {book.friend_rating != null &&
+                              ` · ${book.friend_rating}/10`}
+                          </span>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-
-            {booksInCommon.length === 0 ? (
-              <p className="py-8 text-center text-text-muted">
-                No books in common yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {booksInCommon.map((book) => (
-                  <Link
-                    key={book.isbn13}
-                    href={`/library/${book.isbn13}`}
-                    className="flex items-center gap-3 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-3 transition-colors hover:border-accent"
-                  >
-                    {book.cover_url ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={book.cover_url}
-                        alt=""
-                        className="h-16 w-11 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-16 w-11 items-center justify-center rounded bg-bg-light">
-                        <span className="text-[8px] text-text-subtle">
-                          No cover
-                        </span>
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold">
-                        {book.title ?? "Untitled"}
-                      </p>
-                      <div className="mt-1 flex gap-4 text-xs text-text-muted">
-                        <span>
-                          You: {friendlyStatus(book.your_status)}
-                          {book.your_rating != null &&
-                            ` · ${book.your_rating}/10`}
-                        </span>
-                        <span>
-                          {profile?.display_name ?? "Friend"}:{" "}
-                          {friendlyStatus(book.friend_status)}
-                          {book.friend_rating != null &&
-                            ` · ${book.friend_rating}/10`}
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Confirmation dialog */}
