@@ -66,8 +66,8 @@ export function BookCard({ book }: BookCardProps) {
             </span>
           )}
           {book.rating !== null && book.rating > 0 && (
-            <span className="text-sm text-text-muted">
-              {book.rating}/10
+            <span className="flex items-center gap-0.5 text-sm text-accent">
+              ★ {Number(book.rating).toFixed(1)}
             </span>
           )}
         </div>

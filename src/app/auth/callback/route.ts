@@ -19,12 +19,12 @@ export async function GET(request: Request) {
       if (user) {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("display_name")
+          .select("display_name, username")
           .eq("id", user.id)
           .maybeSingle();
 
-        // If no profile or missing display name, redirect to profile setup
-        if (!profile?.display_name) {
+        // If no profile or missing required fields, redirect to profile setup
+        if (!profile?.display_name || !profile?.username) {
           return NextResponse.redirect(`${origin}/signup/profile`);
         }
       }

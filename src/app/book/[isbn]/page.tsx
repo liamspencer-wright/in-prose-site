@@ -95,8 +95,15 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
 
   const coverSrc = book.image || book.image_original;
 
+  const jsonLd = buildJsonLd(book);
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       {/* Book header */}
       <div className="mb-8 flex gap-6 max-sm:flex-col max-sm:items-center">
         <div className="h-[240px] w-[160px] flex-shrink-0 overflow-hidden rounded-xl bg-bg-medium shadow-[0_4px_20px_rgba(0,0,0,0.15)]">
@@ -192,7 +199,7 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
                   </span>
                 )}
                 {sharer.rating !== null && sharer.rating > 0 && (
-                  <span>&middot; Rated {sharer.rating}/10</span>
+                  <span>&middot; ★ {Number(sharer.rating).toFixed(1)}</span>
                 )}
               </div>
               {sharer.review && (
@@ -331,9 +338,7 @@ async function fetchSharerInfo(
   // Get user's book entry (only if public visibility)
   const { data: userBook } = await supabase
     .from("user_books_expanded_all")
-    .select(
-      "rating, review, status, visibility, user_id"
-    )
+    .select("rating, review, status, visibility, user_id")
     .eq("isbn13", isbn)
     .eq("user_id", userId)
     .eq("visibility", "public")
@@ -361,6 +366,61 @@ async function fetchSharerInfo(
 }
 
 // ── Helpers ──
+
+function buildJsonLd(book: BookData): Record<string, unknown> {
+  const ld: Record<string, unknown> = {
+    "@context": "https://schema.org",
+    "@type": "Book",
+    name: book.title ?? "Untitled",
+    isbn: book.isbn13,
+  };
+
+  if (book.authors?.length) {
+    ld.author = book.authors.map((name) => ({
+      "@type": "Person",
+      name,
+    }));
+  }
+
+  if (book.image) {
+    ld.image = book.image;
+  }
+
+  if (book.publisher) {
+    ld.publisher = {
+      "@type": "Organization",
+      name: book.publisher,
+    };
+  }
+
+  if (book.pub_year) {
+    ld.datePublished = String(book.pub_year);
+  }
+
+  if (book.pages) {
+    ld.numberOfPages = book.pages;
+  }
+
+  if (book.genres?.length) {
+    ld.genre = book.genres;
+  }
+
+  if (
+    book.community_rating !== null &&
+    book.ratings_count !== null &&
+    book.ratings_count > 0
+  ) {
+    ld.aggregateRating = {
+      "@type": "AggregateRating",
+      ratingValue: book.community_rating,
+      bestRating: 10,
+      worstRating: 0,
+      ratingCount: book.ratings_count,
+    };
+  }
+
+  return ld;
+}
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();

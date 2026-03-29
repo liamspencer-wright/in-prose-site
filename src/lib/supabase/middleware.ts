@@ -48,8 +48,46 @@ export async function updateSession(request: NextRequest) {
 
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
+    const originalPath = request.nextUrl.pathname;
     url.pathname = "/login";
+    url.searchParams.set("next", originalPath);
+
+    // Add contextual message based on the route
+    const messages: Record<string, string> = {
+      "/library": "Log in to access your library",
+      "/search": "Log in to search and add books",
+      "/friends": "Log in to see your friends",
+      "/feed": "Log in to view your feed",
+      "/settings": "Log in to access settings",
+      "/account": "Log in to access your account",
+    };
+    const message = Object.entries(messages).find(([route]) =>
+      originalPath.startsWith(route)
+    )?.[1];
+    if (message) {
+      url.searchParams.set("message", message);
+    }
+
     return NextResponse.redirect(url);
+  }
+
+  // Redirect authenticated users with incomplete profiles to profile setup
+  if (
+    user &&
+    isProtected &&
+    !request.nextUrl.pathname.startsWith("/signup/profile")
+  ) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("username")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (!profile?.username) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/signup/profile";
+      return NextResponse.redirect(url);
+    }
   }
 
   // Redirect authenticated users away from auth pages (login/signup)

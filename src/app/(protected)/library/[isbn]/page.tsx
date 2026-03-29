@@ -70,13 +70,15 @@ function BookDetailContent() {
   const isbn = params.isbn as string;
   const searchParams = useSearchParams();
   const from = searchParams.get("from");
+  const initialTab = (searchParams.get("tab") as Tab) || "details";
+  const initialStatus = searchParams.get("status");
   const { user } = useAuth();
   const router = useRouter();
   const supabase = createClient();
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("details");
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
   // Editable fields
   const [status, setStatus] = useState("");
@@ -108,13 +110,18 @@ function BookDetailContent() {
 
       const b = data as BookDetail;
       setBook(b);
-      setStatus(b.status ?? "to_read");
+      // If a status was passed via URL (e.g. from dashboard Finish/DNF), pre-select it
+      setStatus(initialStatus ?? b.status ?? "to_read");
       setOwnership(b.ownership ?? "not_owned");
       setVisibility(b.visibility ?? "public");
       setRating(b.rating);
       setReview(b.review ?? "");
       setStartedAt(b.started_at ? b.started_at.slice(0, 10) : "");
-      setFinishedAt(b.finished_at ? b.finished_at.slice(0, 10) : "");
+      if (initialStatus === "finished" || initialStatus === "dnf") {
+        setFinishedAt(new Date().toISOString().slice(0, 10));
+      } else {
+        setFinishedAt(b.finished_at ? b.finished_at.slice(0, 10) : "");
+      }
       setLoading(false);
     }
 
@@ -297,7 +304,7 @@ function DetailsTab({ book }: { book: BookDetail }) {
           <MetaRow label="Pages" value={String(book.pages)} />
         )}
         {book.avg_rating !== null && (
-          <MetaRow label="Community avg" value={`${book.avg_rating.toFixed(1)}/10`} />
+          <MetaRow label="Community avg" value={`★ ${book.avg_rating.toFixed(1)}`} />
         )}
       </div>
 
@@ -366,12 +373,12 @@ function EditTab({
     <div className="space-y-6">
       {/* Status */}
       <FieldGroup label="Status">
-        <div className="flex flex-wrap gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setStatus(opt.value)}
-              className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
+              className={`cursor-pointer rounded-full py-1.5 text-center text-sm font-semibold transition-colors ${
                 status === opt.value
                   ? "bg-accent text-white"
                   : "bg-bg-medium text-text-muted hover:bg-accent/10"
@@ -381,38 +388,6 @@ function EditTab({
             </button>
           ))}
         </div>
-      </FieldGroup>
-
-      {/* Rating */}
-      <FieldGroup label="Rating">
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min="0"
-            max="10"
-            step="1"
-            value={rating ?? 0}
-            onChange={(e) => {
-              const v = parseInt(e.target.value);
-              setRating(v === 0 ? null : v);
-            }}
-            className="flex-1 accent-accent"
-          />
-          <span className="w-12 text-center text-lg font-semibold">
-            {rating ?? "—"}/10
-          </span>
-        </div>
-      </FieldGroup>
-
-      {/* Review */}
-      <FieldGroup label="Review">
-        <textarea
-          value={review}
-          onChange={(e) => setReview(e.target.value)}
-          placeholder="Write your thoughts..."
-          rows={4}
-          className="w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
-        />
       </FieldGroup>
 
       {/* Ownership & Visibility */}
@@ -441,25 +416,64 @@ function EditTab({
         </FieldGroup>
       </div>
 
-      {/* Dates */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FieldGroup label="Started">
-          <input
-            type="date"
-            value={startedAt}
-            onChange={(e) => setStartedAt(e.target.value)}
-            className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
-          />
-        </FieldGroup>
-        <FieldGroup label="Finished">
-          <input
-            type="date"
-            value={finishedAt}
-            onChange={(e) => setFinishedAt(e.target.value)}
-            className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
-          />
-        </FieldGroup>
-      </div>
+      {/* Dates — reading: start only; finished/dnf: both */}
+      {status !== "to_read" && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FieldGroup label="Started">
+            <input
+              type="date"
+              value={startedAt}
+              onChange={(e) => setStartedAt(e.target.value)}
+              className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
+            />
+          </FieldGroup>
+          {(status === "finished" || status === "dnf") && (
+            <FieldGroup label="Finished">
+              <input
+                type="date"
+                value={finishedAt}
+                onChange={(e) => setFinishedAt(e.target.value)}
+                className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none"
+              />
+            </FieldGroup>
+          )}
+        </div>
+      )}
+
+      {/* Rating & Review — finished only */}
+      {status === "finished" && (
+        <>
+          <FieldGroup label="Rating">
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min="0"
+                max="10"
+                step="1"
+                value={rating ?? 0}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value);
+                  setRating(v === 0 ? null : v);
+                }}
+                className="flex-1 accent-accent"
+              />
+              <span className="flex w-16 items-center justify-center gap-1 text-lg font-semibold text-accent">
+                <span>★</span> {rating !== null ? rating.toFixed(1) : "—"}
+              </span>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup label="Review">
+            <textarea
+              value={review}
+              onChange={(e) => setReview(e.target.value)}
+              placeholder="Write your thoughts..."
+              rows={4}
+              className="w-full resize-none rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-3 font-serif outline-none transition-colors placeholder:text-text-subtle focus:border-accent"
+            />
+          </FieldGroup>
+        </>
+      )}
 
       {/* Save / Delete */}
       <div className="flex items-center gap-4 pt-2">
@@ -512,24 +526,318 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 
 /* ── Community Tab ── */
 
+type FriendWithBook = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  rating: number | null;
+  review: string | null;
+  review_spoiler: boolean;
+  status: string;
+  created_at: string;
+};
+
+type PublicReview = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  rating: number | null;
+  review: string | null;
+  review_spoiler: boolean;
+  created_at: string;
+};
+
+type BookStats = {
+  avg_rating: number | null;
+  num_reviews: number | null;
+};
+
+const PUBLIC_PAGE_SIZE = 10;
+
 function CommunityTab({ book }: { book: BookDetail }) {
-  return (
-    <div className="space-y-4">
-      {book.avg_rating !== null ? (
-        <div className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-6 text-center">
-          <p className="text-4xl font-bold text-accent">
-            {book.avg_rating.toFixed(1)}
-          </p>
-          <p className="mt-1 text-sm text-text-muted">Community average rating</p>
-        </div>
-      ) : (
-        <p className="py-8 text-center text-text-muted">
-          No community ratings yet.
-        </p>
-      )}
-      <p className="text-center text-sm text-text-subtle">
-        Friend reviews coming soon.
+  const { user } = useAuth();
+
+  const [stats, setStats] = useState<BookStats | null>(null);
+  const [friendsWithBook, setFriendsWithBook] = useState<FriendWithBook[]>([]);
+  const [publicReviews, setPublicReviews] = useState<PublicReview[]>([]);
+  const [loadingPublicMore, setLoadingPublicMore] = useState(false);
+  const [hasMorePublic, setHasMorePublic] = useState(true);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+
+    async function load() {
+      const supabase = createClient();
+
+      const statsRes = await supabase
+        .from("book_stats_expanded")
+        .select("avg_rating, num_reviews")
+        .eq("isbn13", book.isbn13)
+        .maybeSingle();
+
+      const friendsRes = await supabase.rpc("get_friends_with_book", {
+        p_isbn13: book.isbn13,
+      });
+
+      setStats((statsRes.data as BookStats) ?? null);
+      setFriendsWithBook((friendsRes.data as FriendWithBook[]) ?? []);
+
+      const publicRes = await supabase.rpc("get_public_reviews_for_book", {
+        p_isbn13: book.isbn13,
+        p_limit: PUBLIC_PAGE_SIZE,
+        p_offset: 0,
+      });
+
+      if (publicRes.data) {
+        const pubResults = publicRes.data as PublicReview[];
+        setPublicReviews(pubResults);
+        setHasMorePublic(pubResults.length === PUBLIC_PAGE_SIZE);
+      }
+
+      setLoading(false);
+    }
+
+    load();
+  }, [user, book.isbn13]);
+
+  async function loadMorePublic() {
+    setLoadingPublicMore(true);
+    const supabase = createClient();
+    const { data } = await supabase.rpc("get_public_reviews_for_book", {
+      p_isbn13: book.isbn13,
+      p_limit: PUBLIC_PAGE_SIZE,
+      p_offset: publicReviews.length,
+    });
+    const results = (data as PublicReview[]) ?? [];
+    setPublicReviews((prev) => [...prev, ...results]);
+    setHasMorePublic(results.length === PUBLIC_PAGE_SIZE);
+    setLoadingPublicMore(false);
+  }
+
+  if (loading) {
+    return <p className="py-12 text-center text-text-muted">Loading...</p>;
+  }
+
+  const friendsWhoRead = friendsWithBook.filter(
+    (f) => f.status === "finished" || f.rating !== null || (f.review && f.review.trim() !== "")
+  );
+  const friendReviews = friendsWithBook.filter(
+    (f) => f.rating !== null || (f.review && f.review.trim() !== "")
+  );
+
+  const noContent =
+    !stats?.avg_rating && friendsWithBook.length === 0 && publicReviews.length === 0;
+
+  if (noContent) {
+    return (
+      <p className="py-12 text-center text-text-muted">
+        No reviews yet — be the first!
       </p>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Community rating badge + friends stats */}
+      <div className="text-center">
+        {stats?.avg_rating !== null && stats?.avg_rating !== undefined && (
+          <div className="mb-4 inline-block rounded-(--radius-card) bg-bg-medium px-8 py-5">
+            <p className="flex items-center justify-center gap-1.5 text-3xl font-bold text-accent">
+              <span>★</span> {stats.avg_rating.toFixed(1)}
+            </p>
+            <p className="mt-1 text-sm text-text-muted">
+              {stats.num_reviews
+                ? `${stats.num_reviews} review${stats.num_reviews !== 1 ? "s" : ""}`
+                : ""}
+            </p>
+          </div>
+        )}
+
+        {friendsWhoRead.length > 0 && (
+          <div>
+            <p className="mb-2 text-sm font-semibold">
+              {friendsWhoRead.length} friend
+              {friendsWhoRead.length !== 1 ? "s" : ""} ha
+              {friendsWhoRead.length !== 1 ? "ve" : "s"} read this book
+            </p>
+            <div className="flex justify-center -space-x-3">
+              {friendsWhoRead.slice(0, 5).map((f) => (
+                <Avatar
+                  key={f.user_id}
+                  url={f.avatar_url}
+                  name={f.display_name}
+                  size={44}
+                />
+              ))}
+              {friendsWhoRead.length > 5 && (
+                <div className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-bg-light bg-bg-medium text-xs font-semibold text-text-muted">
+                  +{friendsWhoRead.length - 5}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Friends' Reviews */}
+      {friendReviews.length > 0 ? (
+        <div>
+          <h2 className="mb-3 text-lg font-bold">Friends&apos; Reviews</h2>
+          <div className="space-y-3">
+            {friendReviews.map((f) => (
+              <ReviewCard
+                key={f.user_id}
+                userId={f.user_id}
+                displayName={f.display_name}
+                avatarUrl={f.avatar_url}
+                rating={f.rating}
+                review={f.review}
+                reviewSpoiler={f.review_spoiler}
+                createdAt={f.created_at}
+              />
+            ))}
+          </div>
+        </div>
+      ) : friendsWithBook.length > 0 ? (
+        <p className="text-center text-sm text-text-subtle">
+          No friends have reviewed this book yet.
+        </p>
+      ) : null}
+
+      {/* Public Reviews */}
+      {publicReviews.length > 0 && (
+        <div>
+          <h2 className="mb-3 text-lg font-bold">All Reviews</h2>
+          <div className="space-y-3">
+            {publicReviews.map((r) => (
+              <ReviewCard
+                key={r.user_id}
+                userId={r.user_id}
+                displayName={r.display_name}
+                avatarUrl={r.avatar_url}
+                rating={r.rating}
+                review={r.review}
+                reviewSpoiler={r.review_spoiler}
+                createdAt={r.created_at}
+              />
+            ))}
+          </div>
+          {hasMorePublic && (
+            <button
+              onClick={loadMorePublic}
+              disabled={loadingPublicMore}
+              className="mt-4 w-full cursor-pointer rounded-(--radius-input) border border-border py-3 text-sm font-semibold text-text-muted transition-colors hover:bg-bg-medium disabled:opacity-55"
+            >
+              {loadingPublicMore ? "Loading..." : "Load more reviews"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+/* ── Shared Components ── */
+
+function Avatar({
+  url,
+  name,
+  size = 32,
+}: {
+  url: string | null;
+  name: string;
+  size?: number;
+}) {
+  const sizeClass =
+    size <= 32 ? "h-8 w-8" : size <= 40 ? "h-10 w-10" : "h-11 w-11";
+  const textClass = size <= 32 ? "text-xs" : "text-sm";
+
+  return url ? (
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src={url}
+      alt={name}
+      className={`${sizeClass} rounded-full object-cover`}
+    />
+  ) : (
+    <div
+      className={`${sizeClass} flex items-center justify-center rounded-full bg-accent/15 ${textClass} font-bold text-accent`}
+    >
+      {name?.[0]?.toUpperCase() ?? "?"}
+    </div>
+  );
+}
+
+function ReviewCard({
+  userId,
+  displayName,
+  avatarUrl,
+  rating,
+  review,
+  reviewSpoiler,
+  createdAt,
+}: {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rating: number | null;
+  review: string | null;
+  reviewSpoiler: boolean;
+  createdAt: string;
+}) {
+  const [spoilerRevealed, setSpoilerRevealed] = useState(false);
+  const hasSpoiler = reviewSpoiler && review && !spoilerRevealed;
+
+  return (
+    <div className="rounded-(--radius-card) bg-accent-blue p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <Link href={`/friends/${userId}`}>
+          <Avatar url={avatarUrl} name={displayName} size={40} />
+        </Link>
+        <div className="flex-1">
+          <Link
+            href={`/friends/${userId}`}
+            className="font-semibold text-text-on-accent hover:underline"
+          >
+            {displayName}
+          </Link>
+          <p className="text-xs text-text-on-accent/60">Finished</p>
+        </div>
+        {rating !== null && (
+          <span className="flex items-center gap-1 text-lg font-bold text-accent">
+            <span>★</span> {rating.toFixed(1)}
+          </span>
+        )}
+      </div>
+      {review && (
+        <div className="relative">
+          <p
+            className={`text-sm leading-relaxed text-text-on-accent/85 ${
+              hasSpoiler ? "select-none blur-sm" : ""
+            }`}
+          >
+            {review}
+          </p>
+          {hasSpoiler && (
+            <button
+              onClick={() => setSpoilerRevealed(true)}
+              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded bg-accent-blue/80 text-sm font-semibold text-text-on-accent transition-colors hover:bg-accent-blue/90"
+            >
+              Contains spoilers — click to reveal
+            </button>
+          )}
+        </div>
+      )}
+      <p className="mt-2 text-xs text-text-on-accent/50">{formatDate(createdAt)}</p>
+    </div>
+  );
+}
+
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }

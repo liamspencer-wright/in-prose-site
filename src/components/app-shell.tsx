@@ -20,7 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [expanded, setExpanded] = useState(false);
 
-  if (!user) return <>{children}</>;
+  if (!user) return <main id="main-content">{children}</main>;
 
   return (
     <div className="flex min-h-svh">
@@ -33,6 +33,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Logo + toggle */}
         <button
           onClick={() => setExpanded(!expanded)}
+          aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
           className="flex cursor-pointer items-center gap-3 border-b-2 border-accent px-4 py-4"
         >
           <Image
@@ -48,7 +49,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </button>
 
         {/* Nav items */}
-        <nav className="flex flex-1 flex-col gap-1 px-2 pt-4">
+        <nav aria-label="Main navigation" className="flex flex-1 flex-col gap-1 px-2 pt-4">
           {NAV_ITEMS.map((item) => {
             const active =
               item.href === "/"
@@ -58,6 +59,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-label={item.label}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
                   active
                     ? "bg-accent/15 opacity-100"
@@ -79,10 +81,27 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Settings + Logout */}
+        {/* Settings, Contact + Logout */}
         <div className="border-t border-border px-2 py-3">
           <Link
+            href="/contact"
+            aria-label="Contact"
+            className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+              pathname.startsWith("/contact")
+                ? "bg-accent/15 opacity-100"
+                : "opacity-50 hover:bg-accent/5 hover:opacity-80"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-6 w-6 flex-shrink-0 fill-current">
+              <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+            </svg>
+            {expanded && (
+              <span className="text-sm font-semibold">Contact</span>
+            )}
+          </Link>
+          <Link
             href="/settings"
+            aria-label="Settings"
             className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
               pathname.startsWith("/settings")
                 ? "bg-accent/15 opacity-100"
@@ -98,6 +117,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           <button
             onClick={signOut}
+            aria-label="Log out"
             className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-accent opacity-50 transition-colors hover:bg-accent/5 hover:opacity-80"
           >
             <svg viewBox="0 0 24 24" className="h-6 w-6 flex-shrink-0 fill-current">
@@ -109,7 +129,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">{children}</main>
+      <main id="main-content" className="flex-1 overflow-y-auto">{children}</main>
     </div>
   );
 }

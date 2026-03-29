@@ -116,7 +116,15 @@ export default function LibraryPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-6 pt-4 pb-12 max-sm:px-4">
-        <h1 className="mb-6 text-3xl font-bold">Your library</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-3xl font-bold">Your library</h1>
+          <Link
+            href="/import"
+            className="rounded-(--radius-input) border border-border px-4 py-2 text-sm font-semibold transition-colors hover:bg-bg-medium"
+          >
+            Import CSV
+          </Link>
+        </div>
 
         {/* Search */}
         <input
