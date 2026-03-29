@@ -16,8 +16,8 @@ type ImportBook = {
 
 type ImportResult = {
   added: number;
+  updated: number;
   skipped: number;
-  duplicates: number;
   errors: string[];
 };
 
@@ -33,31 +33,33 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const books: ImportBook[] = body.books;
+  const books: ImportBook[] = body.books ?? [];
+  const updates: ImportBook[] = body.updates ?? [];
 
-  if (!Array.isArray(books) || books.length === 0) {
+  const total = books.length + updates.length;
+  if (total === 0) {
     return NextResponse.json(
-      { error: "books array is required" },
+      { error: "No books to import" },
       { status: 400 }
     );
   }
 
-  if (books.length > 500) {
+  if (total > 500) {
     return NextResponse.json(
       { error: "Maximum 500 books per import" },
       { status: 400 }
     );
   }
 
-  const result: ImportResult = { added: 0, skipped: 0, duplicates: 0, errors: [] };
+  const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
 
+  // Insert new books
   for (const book of books) {
     if (!book.isbn13 || typeof book.isbn13 !== "string") {
       result.skipped++;
       continue;
     }
 
-    // Upsert book metadata (ignoreDuplicates so existing books aren't modified)
     const { error: bookError } = await supabase.from("books").upsert(
       { isbn13: book.isbn13 },
       { onConflict: "isbn13", ignoreDuplicates: true }
@@ -68,7 +70,6 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // Insert user_books record
     const { error: linkError } = await supabase.from("user_books").insert({
       user_id: user.id,
       isbn13: book.isbn13,
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     if (linkError) {
       if (linkError.code === "23505") {
-        result.duplicates++;
+        result.skipped++;
       } else {
         result.errors.push(`${book.isbn13}: ${linkError.message}`);
       }
@@ -91,6 +92,35 @@ export async function POST(request: NextRequest) {
     }
 
     result.added++;
+  }
+
+  // Update existing books
+  for (const book of updates) {
+    if (!book.isbn13 || typeof book.isbn13 !== "string") {
+      result.skipped++;
+      continue;
+    }
+
+    const { error: updateError } = await supabase
+      .from("user_books")
+      .update({
+        status: book.status ?? "to_read",
+        ownership: book.ownership ?? "not_owned",
+        visibility: book.visibility ?? "public",
+        rating: book.rating ?? null,
+        review: book.review ?? null,
+        started_at: book.started_at ?? null,
+        finished_at: book.finished_at ?? null,
+      })
+      .eq("user_id", user.id)
+      .eq("isbn13", book.isbn13);
+
+    if (updateError) {
+      result.errors.push(`${book.isbn13}: ${updateError.message}`);
+      continue;
+    }
+
+    result.updated++;
   }
 
   return NextResponse.json(result);

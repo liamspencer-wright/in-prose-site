@@ -23,7 +23,7 @@ type ImportRow = {
   isbn13: string;
   csvTitle: string | null;
   csvRating: number | null;
-  csvStatus: string | null;
+  csvRawStatus: string | null;
   csvStartedAt: string | null;
   csvFinishedAt: string | null;
   csvReview: string | null;
@@ -45,8 +45,8 @@ type Step = "upload" | "mapping" | "fetching" | "approval" | "done";
 
 type ImportResult = {
   added: number;
+  updated: number;
   skipped: number;
-  duplicates: number;
   errors: string[];
 };
 
@@ -65,51 +65,93 @@ const FIELD_PATTERNS: Record<string, RegExp> = {
 
 /* ── Status mapping ── */
 
+const STATUS_MAP: [RegExp, string][] = [
+  [/^(read|finished|completed|done)$/i, "finished"],
+  [/^(currently[- ]reading|reading|in[- ]progress|started)$/i, "reading"],
+  [/^(to[- ]read|want[- ]to[- ]read|tbr|wishlist|plan[- ]to[- ]read)$/i, "to_read"],
+  [/^(did[- ]not[- ]finish|dnf|abandoned|quit|stopped)$/i, "dnf"],
+];
+
 function mapStatus(raw: string | null): string {
   if (!raw) return "to_read";
-  const s = raw.toLowerCase().trim();
-  if (/^(read|finished|completed)$/.test(s)) return "finished";
-  if (/^(currently[- ]reading|reading|in[- ]progress)$/.test(s)) return "reading";
-  if (/^(to[- ]read|want[- ]to[- ]read|tbr)$/.test(s)) return "to_read";
-  if (/^(did[- ]not[- ]finish|dnf|abandoned)$/.test(s)) return "dnf";
+  const s = raw.trim();
+  for (const [pattern, status] of STATUS_MAP) {
+    if (pattern.test(s)) return status;
+  }
   return "to_read";
 }
 
+const STATUS_LABEL: Record<string, string> = {
+  to_read: "To read",
+  reading: "Reading",
+  finished: "Finished",
+  dnf: "DNF",
+};
+
 /* ── Rating normalisation ── */
 
-function normaliseRating(raw: string | null, allRatings: (string | null)[]): number | null {
+function normaliseRating(
+  raw: string | null,
+  allRatings: (string | null)[]
+): number | null {
   if (!raw) return null;
   const n = parseFloat(raw);
-  if (isNaN(n)) return null;
+  if (isNaN(n) || n === 0) return null;
 
-  // Detect scale from all ratings
   const maxRating = allRatings.reduce((max, r) => {
     const v = r ? parseFloat(r) : 0;
     return isNaN(v) ? max : Math.max(max, v);
   }, 0);
 
-  if (maxRating <= 5) return Math.round(n * 2); // 0-5 → 0-10
-  if (maxRating <= 10) return Math.round(n); // 0-10 → 0-10
-  if (maxRating <= 100) return Math.round(n / 10); // 0-100 → 0-10
-  return Math.round(n);
+  let normalised: number;
+  if (maxRating <= 5) normalised = Math.round(n * 2);
+  else if (maxRating <= 10) normalised = Math.round(n);
+  else if (maxRating <= 100) normalised = Math.round(n / 10);
+  else normalised = Math.round(n);
+
+  return Math.max(0, Math.min(10, normalised));
 }
 
 /* ── Date normalisation ── */
 
 function normaliseDate(raw: string | null): string | null {
   if (!raw || !raw.trim()) return null;
-  const d = new Date(raw.trim());
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
+  const s = raw.trim();
+
+  // Try ISO format first (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+
+  // Try common formats: DD/MM/YYYY, MM/DD/YYYY, DD-MM-YYYY
+  const slashMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+  if (slashMatch) {
+    const [, a, b, year] = slashMatch;
+    const aNum = parseInt(a!);
+    const bNum = parseInt(b!);
+    // If first number > 12, it's DD/MM/YYYY
+    if (aNum > 12) {
+      const d = new Date(`${year}-${b!.padStart(2, "0")}-${a!.padStart(2, "0")}`);
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    // Otherwise try MM/DD/YYYY first, fall back to DD/MM/YYYY
+    const d1 = new Date(`${year}-${a!.padStart(2, "0")}-${b!.padStart(2, "0")}`);
+    if (!isNaN(d1.getTime())) return d1.toISOString().slice(0, 10);
+  }
+
+  // Try natural language: "March 5, 2024", "5 Mar 2024", etc.
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+
+  return null;
 }
 
 /* ── ISBN cleaning ── */
 
 function cleanIsbn(raw: string | null): string | null {
   if (!raw) return null;
-  // Remove hyphens, spaces, quotes, equals signs (Excel prefix)
   const cleaned = raw.replace(/[\s"'=-]/g, "");
-  // Accept 13-digit or 10-digit ISBNs
   if (/^\d{13}$/.test(cleaned)) return cleaned;
   if (/^\d{9}[\dXx]$/.test(cleaned)) return cleaned;
   return null;
@@ -158,7 +200,6 @@ export default function ImportPage() {
         setRawHeaders(headers);
         setRawRows(dataRows);
 
-        // Auto-detect column mapping (field → column index)
         const autoMap: Record<string, number | null> = {};
         for (const field of Object.keys(FIELD_PATTERNS)) {
           autoMap[field] = null;
@@ -199,8 +240,8 @@ export default function ImportPage() {
     const finishedIdx = fieldMap.finished_at ?? -1;
     const reviewIdx = fieldMap.review ?? -1;
 
-    // Collect all raw ratings for scale detection
-    const allRatings = ratingIdx >= 0 ? rawRows.map((r) => r[ratingIdx] ?? null) : [];
+    const allRatings =
+      ratingIdx >= 0 ? rawRows.map((r) => r[ratingIdx] ?? null) : [];
 
     const parsed: ImportRow[] = [];
     let id = 0;
@@ -209,22 +250,27 @@ export default function ImportPage() {
       const isbn = cleanIsbn(row[isbnIdx] ?? null);
       if (!isbn) continue;
 
+      const csvRawStatus = statusIdx >= 0 ? (row[statusIdx]?.trim() || null) : null;
       const csvRating =
         ratingIdx >= 0
           ? normaliseRating(row[ratingIdx] ?? null, allRatings)
           : null;
-      const csvStatus = statusIdx >= 0 ? mapStatus(row[statusIdx] ?? null) : "to_read";
-      const csvStartedAt = startedIdx >= 0 ? normaliseDate(row[startedIdx] ?? null) : null;
-      const csvFinishedAt = finishedIdx >= 0 ? normaliseDate(row[finishedIdx] ?? null) : null;
-      const csvReview = reviewIdx >= 0 ? (row[reviewIdx]?.trim() || null) : null;
-      const csvTitle = titleIdx >= 0 ? (row[titleIdx]?.trim() || null) : null;
+      const mappedStatus = mapStatus(csvRawStatus);
+      const csvStartedAt =
+        startedIdx >= 0 ? normaliseDate(row[startedIdx] ?? null) : null;
+      const csvFinishedAt =
+        finishedIdx >= 0 ? normaliseDate(row[finishedIdx] ?? null) : null;
+      const csvReview =
+        reviewIdx >= 0 ? (row[reviewIdx]?.trim() || null) : null;
+      const csvTitle =
+        titleIdx >= 0 ? (row[titleIdx]?.trim() || null) : null;
 
       parsed.push({
         id: id++,
         isbn13: isbn,
         csvTitle,
         csvRating,
-        csvStatus,
+        csvRawStatus,
         csvStartedAt,
         csvFinishedAt,
         csvReview,
@@ -232,7 +278,7 @@ export default function ImportPage() {
         metaStatus: "pending",
         selected: true,
         isDuplicate: false,
-        status: csvStatus,
+        status: mappedStatus,
         ownership: "not_owned",
         visibility: "public",
         rating: csvRating,
@@ -262,64 +308,65 @@ export default function ImportPage() {
 
   /* ── Metadata fetch step ── */
 
-  const fetchMetadata = useCallback(
-    async (importRows: ImportRow[]) => {
-      abortRef.current = false;
-      setFetchProgress({ done: 0, total: importRows.length });
+  const fetchMetadata = useCallback(async (importRows: ImportRow[]) => {
+    abortRef.current = false;
+    setFetchProgress({ done: 0, total: importRows.length });
 
-      // Check which ISBNs are already in user's library
-      const existingIsbns = new Set<string>();
-      try {
-        const res = await fetch("/api/library/isbns");
-        if (res.ok) {
-          const data = await res.json();
-          for (const isbn of data.isbns ?? []) existingIsbns.add(isbn);
-        }
-      } catch {
-        // Continue without duplicate detection
+    const existingIsbns = new Set<string>();
+    try {
+      const res = await fetch("/api/library/isbns");
+      if (res.ok) {
+        const data = await res.json();
+        for (const isbn of data.isbns ?? []) existingIsbns.add(isbn);
       }
+    } catch {
+      // Continue without duplicate detection
+    }
 
-      const updated = [...importRows];
+    const updated = [...importRows];
 
-      // Fetch metadata in batches of 5
-      for (let i = 0; i < updated.length; i += 5) {
-        if (abortRef.current) break;
+    for (let i = 0; i < updated.length; i += 5) {
+      if (abortRef.current) break;
 
-        const batch = updated.slice(i, i + 5);
-        await Promise.all(
-          batch.map(async (row) => {
-            const idx = updated.findIndex((r) => r.id === row.id);
-            updated[idx] = { ...updated[idx], metaStatus: "loading" };
+      const batch = updated.slice(i, i + 5);
+      await Promise.all(
+        batch.map(async (row) => {
+          const idx = updated.findIndex((r) => r.id === row.id);
+          updated[idx] = { ...updated[idx], metaStatus: "loading" };
 
-            try {
-              const res = await fetch(
-                `/api/import?isbn=${encodeURIComponent(row.isbn13)}`
-              );
-              if (res.ok) {
-                const meta: BookMeta | null = await res.json();
-                updated[idx] = {
-                  ...updated[idx],
-                  meta,
-                  metaStatus: meta ? "found" : "not_found",
-                  isDuplicate: existingIsbns.has(row.isbn13),
-                };
-              } else {
-                updated[idx] = { ...updated[idx], metaStatus: "not_found" };
-              }
-            } catch {
+          try {
+            const res = await fetch(
+              `/api/import?isbn=${encodeURIComponent(row.isbn13)}`
+            );
+            if (res.ok) {
+              const meta: BookMeta | null = await res.json();
+              const isDuplicate = existingIsbns.has(row.isbn13);
+              updated[idx] = {
+                ...updated[idx],
+                meta,
+                metaStatus: meta ? "found" : "not_found",
+                isDuplicate,
+                // Duplicates default to not selected (user opts in)
+                selected: !isDuplicate,
+              };
+            } else {
               updated[idx] = { ...updated[idx], metaStatus: "not_found" };
             }
-          })
-        );
+          } catch {
+            updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+          }
+        })
+      );
 
-        setRows([...updated]);
-        setFetchProgress({ done: Math.min(i + 5, updated.length), total: updated.length });
-      }
+      setRows([...updated]);
+      setFetchProgress({
+        done: Math.min(i + 5, updated.length),
+        total: updated.length,
+      });
+    }
 
-      setStep("approval");
-    },
-    []
-  );
+    setStep("approval");
+  }, []);
 
   /* ── Approval step helpers ── */
 
@@ -327,13 +374,6 @@ export default function ImportPage() {
     setRows((prev) =>
       prev.map((r) => (r.id === id ? { ...r, selected: !r.selected } : r))
     );
-  }, []);
-
-  const toggleAll = useCallback(() => {
-    setRows((prev) => {
-      const allSelected = prev.every((r) => r.selected);
-      return prev.map((r) => ({ ...r, selected: !allSelected }));
-    });
   }, []);
 
   const updateRow = useCallback(
@@ -348,8 +388,11 @@ export default function ImportPage() {
   /* ── Submit step ── */
 
   const handleSubmit = useCallback(async () => {
-    const selected = rows.filter((r) => r.selected && !r.isDuplicate);
+    const selected = rows.filter((r) => r.selected);
     if (selected.length === 0) return;
+
+    const newBooks = selected.filter((r) => !r.isDuplicate);
+    const updates = selected.filter((r) => r.isDuplicate);
 
     setSubmitting(true);
     setError(null);
@@ -359,7 +402,17 @@ export default function ImportPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          books: selected.map((r) => ({
+          books: newBooks.map((r) => ({
+            isbn13: r.isbn13,
+            status: r.status,
+            ownership: r.ownership,
+            visibility: r.visibility,
+            rating: r.rating,
+            review: r.review,
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+          })),
+          updates: updates.map((r) => ({
             isbn13: r.isbn13,
             status: r.status,
             ownership: r.ownership,
@@ -389,6 +442,15 @@ export default function ImportPage() {
     }
   }, [rows]);
 
+  const resetAll = useCallback(() => {
+    setStep("upload");
+    setRows([]);
+    setRawHeaders([]);
+    setRawRows([]);
+    setFieldMap({});
+    if (fileRef.current) fileRef.current.value = "";
+  }, []);
+
   if (!user) {
     return (
       <div className="mx-auto w-full max-w-4xl px-6 pt-4 pb-12">
@@ -407,7 +469,6 @@ export default function ImportPage() {
         service to import your reading history.
       </p>
 
-      {/* Step indicator */}
       <StepIndicator current={step} />
 
       {error && (
@@ -427,13 +488,7 @@ export default function ImportPage() {
             setFieldMap((prev) => ({ ...prev, [field]: colIdx }))
           }
           onConfirm={handleMappingConfirm}
-          onBack={() => {
-            setStep("upload");
-            setRawHeaders([]);
-            setRawRows([]);
-            setFieldMap({});
-            if (fileRef.current) fileRef.current.value = "";
-          }}
+          onBack={resetAll}
         />
       )}
 
@@ -445,18 +500,10 @@ export default function ImportPage() {
         <ApprovalStep
           rows={rows}
           onToggle={toggleRow}
-          onToggleAll={toggleAll}
           onUpdate={updateRow}
           onSubmit={handleSubmit}
           submitting={submitting}
-          onBack={() => {
-            setStep("upload");
-            setRows([]);
-            setRawHeaders([]);
-            setRawRows([]);
-            setFieldMap({});
-            if (fileRef.current) fileRef.current.value = "";
-          }}
+          onBack={resetAll}
         />
       )}
 
@@ -484,11 +531,9 @@ function StepIndicator({ current }: { current: Step }) {
         <div key={s.key} className="flex items-center gap-1">
           <div
             className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
-              i < currentIdx
+              i <= currentIdx
                 ? "bg-accent text-white"
-                : i === currentIdx
-                  ? "bg-accent text-white"
-                  : "bg-bg-medium text-text-muted"
+                : "bg-bg-medium text-text-muted"
             }`}
           >
             {i < currentIdx ? "\u2713" : i + 1}
@@ -542,7 +587,9 @@ function UploadStep({
           const dt = new DataTransfer();
           dt.items.add(file);
           fileRef.current.files = dt.files;
-          fileRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+          fileRef.current.dispatchEvent(
+            new Event("change", { bubbles: true })
+          );
         }
       }}
     >
@@ -753,10 +800,28 @@ function FetchingStep({
 
 /* ── Approval Step ── */
 
+const STATUS_OPTIONS = [
+  { value: "to_read", label: "To read" },
+  { value: "reading", label: "Reading" },
+  { value: "finished", label: "Finished" },
+  { value: "dnf", label: "DNF" },
+];
+
+const OWNERSHIP_OPTIONS = [
+  { value: "not_owned", label: "Not owned" },
+  { value: "owned", label: "Owned" },
+  { value: "borrowed", label: "Borrowed" },
+];
+
+const VISIBILITY_OPTIONS = [
+  { value: "public", label: "Public" },
+  { value: "friends_only", label: "Friends only" },
+  { value: "private", label: "Private" },
+];
+
 function ApprovalStep({
   rows,
   onToggle,
-  onToggleAll,
   onUpdate,
   onSubmit,
   submitting,
@@ -764,50 +829,124 @@ function ApprovalStep({
 }: {
   rows: ImportRow[];
   onToggle: (id: number) => void;
-  onToggleAll: () => void;
   onUpdate: (id: number, field: string, value: string | number | null) => void;
   onSubmit: () => void;
   submitting: boolean;
   onBack: () => void;
 }) {
-  const selected = rows.filter((r) => r.selected && !r.isDuplicate);
-  const duplicates = rows.filter((r) => r.isDuplicate);
+  const ready = rows.filter(
+    (r) => r.metaStatus === "found" && !r.isDuplicate
+  );
   const notFound = rows.filter((r) => r.metaStatus === "not_found");
-  const allSelected = rows.every((r) => r.selected);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const duplicates = rows.filter((r) => r.isDuplicate);
+  const selectedCount = rows.filter((r) => r.selected).length;
+  const newSelected = rows.filter((r) => r.selected && !r.isDuplicate).length;
+  const updateSelected = rows.filter(
+    (r) => r.selected && r.isDuplicate
+  ).length;
 
   return (
     <div>
       {/* Summary bar */}
-      <div className="mb-4 flex flex-wrap items-center gap-4 text-sm">
+      <div className="mb-6 flex flex-wrap items-center gap-4 text-sm">
         <span className="font-semibold">
-          {selected.length} book{selected.length !== 1 ? "s" : ""} to import
+          {selectedCount} book{selectedCount !== 1 ? "s" : ""} selected
         </span>
-        {duplicates.length > 0 && (
-          <span className="text-text-muted">
-            {duplicates.length} already in library
+        {newSelected > 0 && (
+          <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent">
+            {newSelected} new
           </span>
         )}
-        {notFound.length > 0 && (
-          <span className="text-text-muted">
-            {notFound.length} not found
+        {updateSelected > 0 && (
+          <span className="rounded-full bg-accent-blue/10 px-2.5 py-0.5 text-xs font-semibold text-accent-blue">
+            {updateSelected} to update
           </span>
         )}
       </div>
 
-      {/* Book list */}
-      <div className="mb-6 overflow-x-auto rounded-(--radius-card) border border-border">
+      {/* Section: Ready to import */}
+      {ready.length > 0 && (
+        <BookSection
+          title="Ready to import"
+          subtitle={`${ready.length} book${ready.length !== 1 ? "s" : ""} found`}
+          rows={ready}
+          onToggle={onToggle}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {/* Section: Already in library */}
+      {duplicates.length > 0 && (
+        <BookSection
+          title="Already in your library"
+          subtitle="Select any books to update with imported data"
+          rows={duplicates}
+          onToggle={onToggle}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      {/* Section: Not found */}
+      {notFound.length > 0 && (
+        <BookSection
+          title="Metadata not found"
+          subtitle="These ISBNs couldn't be found. They'll be added with minimal info."
+          rows={notFound}
+          onToggle={onToggle}
+          onUpdate={onUpdate}
+        />
+      )}
+
+      <div className="flex gap-3">
+        <button
+          onClick={onBack}
+          className="cursor-pointer rounded-(--radius-input) border border-border px-6 py-2.5 font-serif font-semibold transition-colors hover:bg-bg-medium"
+        >
+          Start over
+        </button>
+        <button
+          onClick={onSubmit}
+          disabled={submitting || selectedCount === 0}
+          className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-2.5 font-serif font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+        >
+          {submitting
+            ? "Importing..."
+            : `Import ${selectedCount} book${selectedCount !== 1 ? "s" : ""}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── Book Section (used in Approval) ── */
+
+function BookSection({
+  title,
+  subtitle,
+  rows,
+  onToggle,
+  onUpdate,
+}: {
+  title: string;
+  subtitle: string;
+  rows: ImportRow[];
+  onToggle: (id: number) => void;
+  onUpdate: (id: number, field: string, value: string | number | null) => void;
+}) {
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  return (
+    <div className="mb-8">
+      <div className="mb-3">
+        <h3 className="text-lg font-bold">{title}</h3>
+        <p className="text-sm text-text-muted">{subtitle}</p>
+      </div>
+
+      <div className="mb-2 overflow-x-auto rounded-(--radius-card) border border-border">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-bg-light">
-              <th className="px-3 py-2.5 text-left">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={onToggleAll}
-                  className="accent-accent"
-                />
-              </th>
+              <th className="w-10 px-3 py-2.5" />
               <th className="px-3 py-2.5 text-left font-semibold">Book</th>
               <th className="px-3 py-2.5 text-left font-semibold max-sm:hidden">
                 Status
@@ -834,48 +973,11 @@ function ApprovalStep({
           </tbody>
         </table>
       </div>
-
-      <div className="flex gap-3">
-        <button
-          onClick={onBack}
-          className="cursor-pointer rounded-(--radius-input) border border-border px-6 py-2.5 font-serif font-semibold transition-colors hover:bg-bg-medium"
-        >
-          Start over
-        </button>
-        <button
-          onClick={onSubmit}
-          disabled={submitting || selected.length === 0}
-          className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-2.5 font-serif font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
-        >
-          {submitting
-            ? "Importing..."
-            : `Import ${selected.length} book${selected.length !== 1 ? "s" : ""}`}
-        </button>
-      </div>
     </div>
   );
 }
 
 /* ── Approval Row ── */
-
-const STATUS_OPTIONS = [
-  { value: "to_read", label: "To read" },
-  { value: "reading", label: "Reading" },
-  { value: "finished", label: "Finished" },
-  { value: "dnf", label: "DNF" },
-];
-
-const OWNERSHIP_OPTIONS = [
-  { value: "not_owned", label: "Not owned" },
-  { value: "owned", label: "Owned" },
-  { value: "borrowed", label: "Borrowed" },
-];
-
-const VISIBILITY_OPTIONS = [
-  { value: "public", label: "Public" },
-  { value: "friends_only", label: "Friends only" },
-  { value: "private", label: "Private" },
-];
 
 function ApprovalRow({
   row,
@@ -893,23 +995,19 @@ function ApprovalRow({
   const title = row.meta?.title ?? row.csvTitle ?? row.isbn13;
   const authors = row.meta?.authors?.join(", ") ?? "";
   const coverUrl = row.meta?.coverUrl;
+  const statusLabel = STATUS_LABEL[row.status] ?? row.status;
 
   return (
     <>
       <tr
         className={`border-b border-border-subtle transition-colors ${
-          row.isDuplicate
-            ? "bg-bg-medium/50 opacity-60"
-            : row.metaStatus === "not_found"
-              ? "bg-error/3"
-              : ""
+          !row.selected ? "opacity-40" : ""
         }`}
       >
         <td className="px-3 py-2.5">
           <input
             type="checkbox"
             checked={row.selected}
-            disabled={row.isDuplicate}
             onChange={onToggle}
             className="accent-accent"
           />
@@ -933,15 +1031,11 @@ function ApprovalRow({
               {authors && (
                 <p className="truncate text-xs text-text-muted">{authors}</p>
               )}
-              {row.isDuplicate && (
-                <span className="text-xs font-semibold text-accent">
-                  Already in library
-                </span>
-              )}
-              {row.metaStatus === "not_found" && (
-                <span className="text-xs text-error">
-                  Metadata not found
-                </span>
+              {row.csvRawStatus && (
+                <p className="text-xs text-text-subtle">
+                  CSV: &ldquo;{row.csvRawStatus}&rdquo; &rarr;{" "}
+                  <span className="font-semibold">{statusLabel}</span>
+                </p>
               )}
             </div>
           </div>
@@ -950,7 +1044,6 @@ function ApprovalRow({
           <select
             value={row.status}
             onChange={(e) => onUpdate("status", e.target.value)}
-            disabled={row.isDuplicate}
             className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1 font-serif text-xs outline-none"
           >
             {STATUS_OPTIONS.map((o) => (
@@ -1103,14 +1196,18 @@ function DoneStep({ result }: { result: ImportResult }) {
       </div>
       <h2 className="mb-2 text-2xl font-bold">Import complete</h2>
       <div className="mx-auto mb-6 flex max-w-sm justify-center gap-6 text-sm">
-        <div>
-          <p className="text-2xl font-bold text-accent">{result.added}</p>
-          <p className="text-text-muted">added</p>
-        </div>
-        {result.duplicates > 0 && (
+        {result.added > 0 && (
           <div>
-            <p className="text-2xl font-bold">{result.duplicates}</p>
-            <p className="text-text-muted">already in library</p>
+            <p className="text-2xl font-bold text-accent">{result.added}</p>
+            <p className="text-text-muted">added</p>
+          </div>
+        )}
+        {result.updated > 0 && (
+          <div>
+            <p className="text-2xl font-bold text-accent-blue">
+              {result.updated}
+            </p>
+            <p className="text-text-muted">updated</p>
           </div>
         )}
         {result.skipped > 0 && (
