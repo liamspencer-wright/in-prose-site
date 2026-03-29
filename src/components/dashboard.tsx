@@ -4,6 +4,14 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "./auth-provider";
 import Link from "next/link";
+import {
+  type ReadingTarget,
+  computeProgress as sharedComputeProgress,
+  computeHistory as sharedComputeHistory,
+  getRollingWindowStart,
+  addCalendarPeriod,
+  formatPeriodLabel as sharedFormatPeriodLabel,
+} from "@/lib/targets";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,21 +24,6 @@ type DashboardBook = {
   started_at: string | null;
   finished_at: string | null;
   pages: number | null;
-};
-
-type ReadingTarget = {
-  id: string;
-  kind: "deadline" | "rolling";
-  unit: "books" | "pages";
-  goal: number;
-  started_at: string;
-  deadline_at: string | null;
-  cadence_unit: string | null;
-  cadence_value: number;
-  anchor_weekday: number | null;
-  anchor_day: number | null;
-  anchor_month: number | null;
-  is_home_featured: boolean;
 };
 
 // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -583,18 +576,7 @@ function RollingTargetCard({
 }
 
 function formatPeriodLabel(date: Date, cadenceUnit: string | null): string {
-  switch (cadenceUnit) {
-    case "day":
-      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-    case "week":
-      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-    case "month":
-      return date.toLocaleDateString("en-GB", { month: "short" });
-    case "year":
-      return date.getFullYear().toString();
-    default:
-      return date.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-  }
+  return sharedFormatPeriodLabel(date, cadenceUnit);
 }
 
 function CircularProgress({
@@ -783,161 +765,18 @@ function CurrentlyReadingCard({
   );
 }
 
-// ─── Progress computation (matching iOS app logic) ──────────────────────────
+// ─── Progress computation (delegates to shared module) ──────────────────────
 
 function computeProgress(
   target: ReadingTarget,
   finishedBooks: DashboardBook[]
 ): number {
-  const qualifying = finishedBooks.filter((b) => {
-    if (!b.finished_at) return false;
-    const finishedAt = new Date(b.finished_at);
-
-    if (target.kind === "deadline") {
-      if (!target.deadline_at) return false;
-      return (
-        finishedAt >= new Date(target.started_at) &&
-        finishedAt <= new Date(target.deadline_at)
-      );
-    }
-
-    // Rolling: current window start (anchor-aware, matching iOS app)
-    const windowStart = getRollingWindowStart(target);
-    return windowStart ? finishedAt >= windowStart : false;
-  });
-
-  if (target.unit === "pages") {
-    return qualifying.reduce((sum, b) => sum + (b.pages ?? 0), 0);
-  }
-  return qualifying.length;
+  return sharedComputeProgress(target, finishedBooks);
 }
 
 function computeHistory(
   target: ReadingTarget,
   finishedBooks: DashboardBook[]
 ): { start: Date; end: Date; count: number }[] {
-  if (target.kind !== "rolling" || !target.cadence_unit) return [];
-
-  const now = new Date();
-  const startedAt = new Date(target.started_at);
-  const windows: { start: Date; end: Date }[] = [];
-
-  // Walk forward from startedAt, matching iOS historicalWindows()
-  let windowStart = new Date(startedAt);
-  while (windowStart < now) {
-    const nextStart = addCalendarPeriod(
-      windowStart,
-      target.cadence_unit,
-      target.cadence_value
-    );
-    if (nextStart <= now) {
-      windows.push({ start: new Date(windowStart), end: nextStart });
-    } else {
-      windows.push({ start: new Date(windowStart), end: now });
-    }
-    windowStart = nextStart;
-  }
-
-  if (windows.length === 0) {
-    windows.push({ start: startedAt, end: now });
-  }
-
-  // Newest first (matching iOS)
-  return windows.reverse().map((w) => {
-    const qualifying = finishedBooks.filter((b) => {
-      if (!b.finished_at) return false;
-      const d = new Date(b.finished_at);
-      return d >= w.start && d <= w.end;
-    });
-    const count =
-      target.unit === "pages"
-        ? qualifying.reduce((sum, b) => sum + (b.pages ?? 0), 0)
-        : qualifying.length;
-    return { ...w, count };
-  });
-}
-
-/**
- * Get the start of the current rolling window, matching the iOS app's
- * rollingWindowStart logic which accounts for anchor days.
- */
-function getRollingWindowStart(target: ReadingTarget): Date | null {
-  if (target.kind !== "rolling" || !target.cadence_unit) return null;
-
-  const now = new Date();
-  const value = target.cadence_value;
-
-  switch (target.cadence_unit) {
-    case "day": {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      start.setDate(start.getDate() - value);
-      return start;
-    }
-    case "week": {
-      if (target.anchor_weekday) {
-        // Anchor to specific weekday (1=Sun, 2=Mon, ... 7=Sat in iOS; JS: 0=Sun..6=Sat)
-        const jsWeekday = target.anchor_weekday - 1; // Convert to JS convention
-        const anchor = new Date(now);
-        anchor.setHours(0, 0, 0, 0);
-        const currentDay = anchor.getDay();
-        const diff = currentDay - jsWeekday;
-        anchor.setDate(anchor.getDate() - (diff >= 0 ? diff : diff + 7));
-        // If anchor is in the future, step back one cycle
-        if (anchor > now) {
-          anchor.setDate(anchor.getDate() - 7 * value);
-        }
-        return anchor;
-      }
-      // Default: start of current week minus value weeks
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      const dayOfWeek = start.getDay();
-      start.setDate(start.getDate() - dayOfWeek); // Start of week (Sunday)
-      start.setDate(start.getDate() - 7 * (value - 1));
-      return start;
-    }
-    case "month": {
-      const day = target.anchor_day ?? 1;
-      const anchor = new Date(now.getFullYear(), now.getMonth(), day, 0, 0, 0, 0);
-      if (anchor > now) {
-        anchor.setMonth(anchor.getMonth() - value);
-      }
-      return anchor;
-    }
-    case "year": {
-      const month = (target.anchor_month ?? 1) - 1; // JS months are 0-based
-      const day = target.anchor_day ?? 1;
-      const anchor = new Date(now.getFullYear(), month, day, 0, 0, 0, 0);
-      if (anchor > now) {
-        anchor.setFullYear(anchor.getFullYear() - value);
-      }
-      return anchor;
-    }
-    default:
-      return null;
-  }
-}
-
-/**
- * Add a calendar period to a date, using proper calendar arithmetic
- * (matching iOS Calendar.date(byAdding:value:to:))
- */
-function addCalendarPeriod(date: Date, unit: string, value: number): Date {
-  const result = new Date(date);
-  switch (unit) {
-    case "day":
-      result.setDate(result.getDate() + value);
-      break;
-    case "week":
-      result.setDate(result.getDate() + value * 7);
-      break;
-    case "month":
-      result.setMonth(result.getMonth() + value);
-      break;
-    case "year":
-      result.setFullYear(result.getFullYear() + value);
-      break;
-  }
-  return result;
+  return sharedComputeHistory(target, finishedBooks);
 }
