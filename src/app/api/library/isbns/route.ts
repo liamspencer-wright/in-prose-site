@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient();
 
   const {
@@ -10,6 +10,18 @@ export async function GET() {
 
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const details = request.nextUrl.searchParams.get("details") === "1";
+
+  if (details) {
+    const { data } = await supabase
+      .from("user_books_expanded")
+      .select(
+        "isbn13, title, first_author_name, cover_url, status, ownership, visibility, rating, review, started_at, finished_at"
+      );
+
+    return NextResponse.json({ books: data ?? [] });
   }
 
   const { data } = await supabase
