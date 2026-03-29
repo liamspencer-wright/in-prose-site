@@ -7,16 +7,6 @@ import Link from "next/link";
 
 /* ── Types ── */
 
-type InProseField =
-  | "isbn13"
-  | "title"
-  | "rating"
-  | "status"
-  | "started_at"
-  | "finished_at"
-  | "review"
-  | "skip";
-
 type BookMeta = {
   isbn13: string;
   title: string;
@@ -62,7 +52,7 @@ type ImportResult = {
 
 /* ── Column mapping patterns ── */
 
-const FIELD_PATTERNS: Record<Exclude<InProseField, "skip">, RegExp> = {
+const FIELD_PATTERNS: Record<string, RegExp> = {
   isbn13: /^(isbn[_\- ]?13|isbn)$/i,
   title: /^(title|book\s*title|name)$/i,
   rating: /^(rating|my\s*rating|score|star\s*rating)$/i,
@@ -71,17 +61,6 @@ const FIELD_PATTERNS: Record<Exclude<InProseField, "skip">, RegExp> = {
   finished_at:
     /^(date\s*(read|finished)|finished[_ ]?at|finish\s*date|date\s*completed)$/i,
   review: /^(review|my\s*review|notes|comments)$/i,
-};
-
-const FIELD_LABELS: Record<InProseField, string> = {
-  isbn13: "ISBN",
-  title: "Title",
-  rating: "Rating",
-  status: "Status",
-  started_at: "Date started",
-  finished_at: "Date finished",
-  review: "Review",
-  skip: "Skip this column",
 };
 
 /* ── Status mapping ── */
@@ -143,7 +122,7 @@ export default function ImportPage() {
   const [step, setStep] = useState<Step>("upload");
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<string[][]>([]);
-  const [columnMap, setColumnMap] = useState<Record<number, InProseField>>({});
+  const [fieldMap, setFieldMap] = useState<Record<string, number | null>>({});
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [submitting, setSubmitting] = useState(false);
@@ -179,18 +158,21 @@ export default function ImportPage() {
         setRawHeaders(headers);
         setRawRows(dataRows);
 
-        // Auto-detect column mapping
-        const autoMap: Record<number, InProseField> = {};
+        // Auto-detect column mapping (field → column index)
+        const autoMap: Record<string, number | null> = {};
+        for (const field of Object.keys(FIELD_PATTERNS)) {
+          autoMap[field] = null;
+        }
         headers.forEach((h, i) => {
           const trimmed = h.trim();
           for (const [field, pattern] of Object.entries(FIELD_PATTERNS)) {
-            if (pattern.test(trimmed)) {
-              autoMap[i] = field as InProseField;
+            if (pattern.test(trimmed) && autoMap[field] === null) {
+              autoMap[field] = i;
               break;
             }
           }
         });
-        setColumnMap(autoMap);
+        setFieldMap(autoMap);
         setStep("mapping");
       },
       error() {
@@ -202,30 +184,20 @@ export default function ImportPage() {
   /* ── Mapping step ── */
 
   const handleMappingConfirm = useCallback(() => {
-    const isbnCol = Object.entries(columnMap).find(
-      ([, f]) => f === "isbn13"
-    )?.[0];
-
-    if (isbnCol === undefined) {
-      setError("You must map at least one column to ISBN.");
+    if (fieldMap.isbn13 === null || fieldMap.isbn13 === undefined) {
+      setError("You must map a CSV column to ISBN.");
       return;
     }
 
     setError(null);
 
-    // Find column indices
-    const col = (field: InProseField) => {
-      const entry = Object.entries(columnMap).find(([, f]) => f === field);
-      return entry ? parseInt(entry[0]) : -1;
-    };
-
-    const isbnIdx = col("isbn13");
-    const titleIdx = col("title");
-    const ratingIdx = col("rating");
-    const statusIdx = col("status");
-    const startedIdx = col("started_at");
-    const finishedIdx = col("finished_at");
-    const reviewIdx = col("review");
+    const isbnIdx = fieldMap.isbn13 ?? -1;
+    const titleIdx = fieldMap.title ?? -1;
+    const ratingIdx = fieldMap.rating ?? -1;
+    const statusIdx = fieldMap.status ?? -1;
+    const startedIdx = fieldMap.started_at ?? -1;
+    const finishedIdx = fieldMap.finished_at ?? -1;
+    const reviewIdx = fieldMap.review ?? -1;
 
     // Collect all raw ratings for scale detection
     const allRatings = ratingIdx >= 0 ? rawRows.map((r) => r[ratingIdx] ?? null) : [];
@@ -286,7 +258,7 @@ export default function ImportPage() {
     setRows(deduped);
     setStep("fetching");
     fetchMetadata(deduped);
-  }, [columnMap, rawRows]);
+  }, [fieldMap, rawRows]);
 
   /* ── Metadata fetch step ── */
 
@@ -450,16 +422,16 @@ export default function ImportPage() {
         <MappingStep
           headers={rawHeaders}
           sampleRows={rawRows.slice(0, 3)}
-          columnMap={columnMap}
-          onChange={(col, field) =>
-            setColumnMap((prev) => ({ ...prev, [col]: field }))
+          fieldMap={fieldMap}
+          onChange={(field, colIdx) =>
+            setFieldMap((prev) => ({ ...prev, [field]: colIdx }))
           }
           onConfirm={handleMappingConfirm}
           onBack={() => {
             setStep("upload");
             setRawHeaders([]);
             setRawRows([]);
-            setColumnMap({});
+            setFieldMap({});
             if (fileRef.current) fileRef.current.value = "";
           }}
         />
@@ -482,7 +454,7 @@ export default function ImportPage() {
             setRows([]);
             setRawHeaders([]);
             setRawRows([]);
-            setColumnMap({});
+            setFieldMap({});
             if (fileRef.current) fileRef.current.value = "";
           }}
         />
@@ -613,27 +585,44 @@ function UploadStep({
 
 /* ── Mapping Step ── */
 
+type MappableField = {
+  key: string;
+  label: string;
+  required: boolean;
+};
+
+const MAPPABLE_FIELDS: MappableField[] = [
+  { key: "isbn13", label: "ISBN", required: true },
+  { key: "title", label: "Title", required: false },
+  { key: "status", label: "Status", required: false },
+  { key: "rating", label: "Rating", required: false },
+  { key: "started_at", label: "Date started", required: false },
+  { key: "finished_at", label: "Date finished", required: false },
+  { key: "review", label: "Review", required: false },
+];
+
 function MappingStep({
   headers,
   sampleRows,
-  columnMap,
+  fieldMap,
   onChange,
   onConfirm,
   onBack,
 }: {
   headers: string[];
   sampleRows: string[][];
-  columnMap: Record<number, InProseField>;
-  onChange: (col: number, field: InProseField) => void;
+  fieldMap: Record<string, number | null>;
+  onChange: (field: string, colIdx: number | null) => void;
   onConfirm: () => void;
   onBack: () => void;
 }) {
-  const hasIsbn = Object.values(columnMap).includes("isbn13");
+  const hasIsbn = fieldMap.isbn13 !== null && fieldMap.isbn13 !== undefined;
 
   return (
     <div>
       <p className="mb-4 text-sm text-text-muted">
-        We auto-detected your columns. Confirm or adjust the mapping below.
+        Match your CSV columns to in prose fields. We auto-detected what we
+        could.
       </p>
 
       <div className="mb-6 overflow-x-auto">
@@ -641,10 +630,10 @@ function MappingStep({
           <thead>
             <tr className="border-b border-border">
               <th className="px-3 py-2 text-left font-semibold">
-                Your column
+                in prose field
               </th>
               <th className="px-3 py-2 text-left font-semibold">
-                Maps to
+                Your CSV column
               </th>
               <th className="px-3 py-2 text-left font-semibold text-text-muted">
                 Sample data
@@ -652,44 +641,62 @@ function MappingStep({
             </tr>
           </thead>
           <tbody>
-            {headers.map((h, i) => (
-              <tr key={i} className="border-b border-border-subtle">
-                <td className="px-3 py-2 font-medium">{h}</td>
-                <td className="px-3 py-2">
-                  <select
-                    value={columnMap[i] ?? "skip"}
-                    onChange={(e) =>
-                      onChange(i, e.target.value as InProseField)
-                    }
-                    className={`cursor-pointer rounded border px-2 py-1 font-serif text-sm outline-none ${
-                      columnMap[i] && columnMap[i] !== "skip"
-                        ? "border-accent bg-accent/5"
-                        : "border-border bg-bg-light"
-                    }`}
-                  >
-                    {Object.entries(FIELD_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td className="px-3 py-2 text-text-muted">
-                  {sampleRows
-                    .slice(0, 2)
-                    .map((r) => r[i] ?? "")
-                    .filter(Boolean)
-                    .join(", ")}
-                </td>
-              </tr>
-            ))}
+            {MAPPABLE_FIELDS.map((field) => {
+              const selectedCol = fieldMap[field.key] ?? null;
+              return (
+                <tr key={field.key} className="border-b border-border-subtle">
+                  <td className="px-3 py-2">
+                    <span className="font-medium">{field.label}</span>
+                    {field.required && (
+                      <span className="ml-1 text-xs font-semibold text-error">
+                        *
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <select
+                      value={selectedCol !== null ? String(selectedCol) : ""}
+                      onChange={(e) =>
+                        onChange(
+                          field.key,
+                          e.target.value === ""
+                            ? null
+                            : parseInt(e.target.value)
+                        )
+                      }
+                      className={`cursor-pointer rounded border px-2 py-1 font-serif text-sm outline-none ${
+                        selectedCol !== null
+                          ? "border-accent bg-accent/5"
+                          : "border-border bg-bg-light"
+                      }`}
+                    >
+                      <option value="">Not mapped</option>
+                      {headers.map((h, i) => (
+                        <option key={i} value={String(i)}>
+                          {h}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-3 py-2 text-text-muted">
+                    {selectedCol !== null
+                      ? sampleRows
+                          .slice(0, 2)
+                          .map((r) => r[selectedCol] ?? "")
+                          .filter(Boolean)
+                          .join(", ")
+                      : "\u2014"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {!hasIsbn && (
         <p className="mb-4 text-sm font-semibold text-error">
-          An ISBN column is required to look up book metadata.
+          ISBN is required to look up book metadata.
         </p>
       )}
 
