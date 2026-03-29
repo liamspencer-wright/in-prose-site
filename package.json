@@ -12,6 +12,7 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.4",
     "next": "^15.3.2",
+    "papaparse": "^5.5.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
@@ -20,6 +21,7 @@
     "@netlify/plugin-nextjs": "^5.15.9",
     "@tailwindcss/postcss": "^4.1.4",
     "@types/node": "^22.15.3",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "eslint": "^9.25.1",
