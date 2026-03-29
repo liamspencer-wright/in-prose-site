@@ -100,7 +100,7 @@ const STATUS_MAP: [RegExp, string][] = [
     /^(to[- ]read|want[- ]to[- ]read|tbr|wishlist|plan[- ]to[- ]read)$/i,
     "to_read",
   ],
-  [/^(did[- ]not[- ]finish|dnf|abandoned|quit|stopped)$/i, "dnf"],
+  [/^(did[_\- ]not[_\- ]finish|dnf|abandoned|quit|stopped)$/i, "dnf"],
 ];
 
 function mapStatus(raw: string | null): string {
