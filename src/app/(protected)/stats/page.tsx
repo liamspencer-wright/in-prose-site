@@ -71,6 +71,7 @@ export default function StatsPage() {
       supabase
         .from("reading_targets")
         .select("*")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false }),
       supabase
         .from("user_books_expanded")

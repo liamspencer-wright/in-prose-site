@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { ReadingTarget } from "@/lib/targets";
+import { addCalendarPeriod } from "@/lib/targets";
 
 type TargetFormData = Omit<ReadingTarget, "id" | "user_id" | "created_at">;
 
@@ -21,14 +22,14 @@ const MONTHS = [
 ];
 
 type StartPreset = "today" | "week" | "month" | "year" | "custom";
-type EndPreset = "week" | "month" | "year" | "custom";
+type EndPreset = "week" | "month" | "year" | "in1week" | "in1month" | "custom";
 type AnchorDayPreset = "start" | "end" | "custom";
 
 function startOfWeek(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   const day = d.getDay();
-  const diff = day === 0 ? 6 : day - 1; // Monday-based
+  const diff = day === 0 ? 6 : day - 1;
   d.setDate(d.getDate() - diff);
   return d;
 }
@@ -58,12 +59,33 @@ function endOfYear(): Date {
   return new Date(new Date().getFullYear(), 11, 31, 23, 59, 59, 999);
 }
 
+function inOneWeek(): Date {
+  const d = new Date();
+  d.setDate(d.getDate() + 7);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
+function inOneMonth(): Date {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
+
 function toDateInputValue(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatDateLabel(d: Date): string {
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 function daysInMonth(month: number): number {
-  // month is 1-based
   return new Date(new Date().getFullYear(), month, 0).getDate();
 }
 
@@ -84,14 +106,10 @@ export function TargetFormModal({
 }) {
   const isEdit = !!existing;
 
-  // Form state
-  const [kind, setKind] = useState<"deadline" | "rolling">(
-    existing?.kind ?? "deadline"
-  );
   const [unit, setUnit] = useState<"books" | "pages">(
     existing?.unit ?? "books"
   );
-  const [goal, setGoal] = useState(existing?.goal ?? 5);
+  const [goal, setGoal] = useState(existing?.goal ?? 1);
 
   // Start date
   const [startPreset, setStartPreset] = useState<StartPreset>(
@@ -101,6 +119,11 @@ export function TargetFormModal({
     existing
       ? toDateInputValue(new Date(existing.started_at))
       : toDateInputValue(new Date())
+  );
+
+  // Repeating toggle
+  const [isRepeating, setIsRepeating] = useState(
+    existing ? existing.kind === "rolling" : false
   );
 
   // End date (deadline only)
@@ -124,7 +147,7 @@ export function TargetFormModal({
   // Anchors
   const [anchorWeekday, setAnchorWeekday] = useState(
     existing?.anchor_weekday ?? 2
-  ); // Monday
+  );
   const [anchorDayPreset, setAnchorDayPreset] = useState<AnchorDayPreset>(
     existing?.anchor_day
       ? existing.anchor_day === 1
@@ -147,60 +170,45 @@ export function TargetFormModal({
   );
   const [isPrivate, setIsPrivate] = useState(existing?.is_private ?? false);
 
-  // Compute actual start date from preset
+  const kind = isRepeating ? "rolling" : "deadline";
+
+  // Compute dates
   const computedStartDate = (() => {
     switch (startPreset) {
-      case "today":
-        return toDateInputValue(new Date());
-      case "week":
-        return toDateInputValue(startOfWeek());
-      case "month":
-        return toDateInputValue(startOfMonth());
-      case "year":
-        return toDateInputValue(startOfYear());
-      case "custom":
-        return startCustomDate;
+      case "today": return toDateInputValue(new Date());
+      case "week": return toDateInputValue(startOfWeek());
+      case "month": return toDateInputValue(startOfMonth());
+      case "year": return toDateInputValue(startOfYear());
+      case "custom": return startCustomDate;
     }
   })();
 
-  // Compute actual end date from preset
   const computedEndDate = (() => {
     switch (endPreset) {
-      case "week":
-        return toDateInputValue(endOfWeek());
-      case "month":
-        return toDateInputValue(endOfMonth());
-      case "year":
-        return toDateInputValue(endOfYear());
-      case "custom":
-        return endCustomDate;
+      case "week": return toDateInputValue(endOfWeek());
+      case "month": return toDateInputValue(endOfMonth());
+      case "year": return toDateInputValue(endOfYear());
+      case "in1week": return toDateInputValue(inOneWeek());
+      case "in1month": return toDateInputValue(inOneMonth());
+      case "custom": return endCustomDate;
     }
   })();
 
-  // Update custom date fields when presets change
   useEffect(() => {
-    if (startPreset !== "custom") {
-      setStartCustomDate(computedStartDate);
-    }
+    if (startPreset !== "custom") setStartCustomDate(computedStartDate);
   }, [startPreset, computedStartDate]);
 
   useEffect(() => {
-    if (endPreset !== "custom") {
-      setEndCustomDate(computedEndDate);
-    }
+    if (endPreset !== "custom") setEndCustomDate(computedEndDate);
   }, [endPreset, computedEndDate]);
 
-  // Compute anchor day
   const computedAnchorDay = (() => {
-    if (kind !== "rolling") return null;
+    if (!isRepeating) return null;
     if (cadenceUnit !== "month" && cadenceUnit !== "year") return null;
     switch (anchorDayPreset) {
-      case "start":
-        return 1;
-      case "end":
-        return cadenceUnit === "year" ? daysInMonth(anchorMonth) : 31;
-      case "custom":
-        return anchorCustomDay;
+      case "start": return 1;
+      case "end": return cadenceUnit === "year" ? daysInMonth(anchorMonth) : 31;
+      case "custom": return anchorCustomDay;
     }
   })();
 
@@ -228,69 +236,48 @@ export function TargetFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 pt-[10vh]">
-      <div
-        className="relative w-full max-w-lg rounded-(--radius-card) bg-white p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold">
-            {isEdit ? "Edit target" : "New target"}
-          </h2>
-          <button
-            onClick={onCancel}
-            className="cursor-pointer rounded-full p-1.5 text-text-muted transition-colors hover:bg-bg-light"
-          >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 fill-current">
-              <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-            </svg>
-          </button>
-        </div>
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-bg-light"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="mx-auto w-full max-w-lg px-5 pt-6 pb-12">
+        {/* Title */}
+        <h1 className="mb-6 font-serif text-2xl font-bold">
+          {isEdit ? "Edit target" : "Set a target"}
+        </h1>
 
-        <div className="space-y-5">
-          {/* Type */}
-          <FieldGroup label="Type">
-            <div className="grid grid-cols-2 gap-2">
-              <PillButton
-                active={kind === "deadline"}
-                onClick={() => setKind("deadline")}
-              >
-                Deadline
-              </PillButton>
-              <PillButton
-                active={kind === "rolling"}
-                onClick={() => setKind("rolling")}
-              >
-                Rolling
-              </PillButton>
-            </div>
-          </FieldGroup>
-
-          {/* Unit */}
-          <FieldGroup label="What to track">
-            <div className="grid grid-cols-2 gap-2">
-              <PillButton
+        <div className="space-y-4">
+          {/* Goal section */}
+          <FormCard title="Goal">
+            {/* Unit selector - large cards */}
+            <div className="mb-4 grid grid-cols-2 gap-3">
+              <UnitCard
                 active={unit === "books"}
                 onClick={() => setUnit("books")}
-              >
-                Books
-              </PillButton>
-              <PillButton
+                label="Books"
+                icon={
+                  <svg viewBox="0 0 24 24" className="h-8 w-8 fill-current">
+                    <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9h-4v4h-2v-4H9V9h4V5h2v4h4v2z" />
+                  </svg>
+                }
+              />
+              <UnitCard
                 active={unit === "pages"}
                 onClick={() => setUnit("pages")}
-              >
-                Pages
-              </PillButton>
+                label="Pages"
+                icon={
+                  <svg viewBox="0 0 24 24" className="h-8 w-8 fill-current">
+                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zM13 9V3.5L18.5 9H13z" />
+                  </svg>
+                }
+              />
             </div>
-          </FieldGroup>
 
-          {/* Goal */}
-          <FieldGroup label="Goal">
-            <div className="flex items-center gap-3">
+            {/* Goal stepper - full width */}
+            <div className="flex items-center overflow-hidden rounded-(--radius-input) border-[1.5px] border-border bg-white">
               <button
                 onClick={() => setGoal(Math.max(1, goal - 1))}
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border text-lg font-bold transition-colors hover:bg-bg-light"
+                className="flex h-12 w-16 cursor-pointer items-center justify-center text-xl font-bold text-accent transition-colors hover:bg-bg-light"
               >
                 &minus;
               </button>
@@ -301,38 +288,36 @@ export function TargetFormModal({
                 onChange={(e) =>
                   setGoal(Math.max(1, parseInt(e.target.value) || 1))
                 }
-                className="w-20 rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-3 py-2 text-center font-serif text-lg font-bold outline-none focus:border-accent"
+                className="h-12 flex-1 bg-transparent text-center font-serif text-2xl font-bold outline-none"
               />
               <button
                 onClick={() => setGoal(goal + 1)}
-                className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-border text-lg font-bold transition-colors hover:bg-bg-light"
+                className="flex h-12 w-16 cursor-pointer items-center justify-center text-xl font-bold text-accent transition-colors hover:bg-bg-light"
               >
                 +
               </button>
-              <span className="text-sm text-text-muted">{unit}</span>
             </div>
-          </FieldGroup>
+          </FormCard>
 
-          {/* Start date */}
-          <FieldGroup label="Start date">
-            <div className="mb-2 flex flex-wrap gap-1.5">
+          {/* Starting section */}
+          <FormCard title="Starting">
+            <div className="mb-2 flex flex-wrap gap-2">
               {(
                 [
                   ["today", "Today"],
-                  ["week", "This week"],
-                  ["month", "This month"],
-                  ["year", "This year"],
+                  ["week", "Start of week"],
+                  ["month", "Start of month"],
+                  ["year", "Start of year"],
                   ["custom", "Custom"],
                 ] as [StartPreset, string][]
               ).map(([value, label]) => (
-                <PillButton
+                <PresetPill
                   key={value}
                   active={startPreset === value}
                   onClick={() => setStartPreset(value)}
-                  small
                 >
                   {label}
-                </PillButton>
+                </PresetPill>
               ))}
             </div>
             {startPreset === "custom" && (
@@ -340,31 +325,48 @@ export function TargetFormModal({
                 type="date"
                 value={startCustomDate}
                 onChange={(e) => setStartCustomDate(e.target.value)}
-                className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-2.5 font-serif outline-none focus:border-accent"
+                className="mt-2 w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-white px-4 py-2.5 font-serif outline-none focus:border-accent"
               />
             )}
-          </FieldGroup>
+            <p className="mt-2 text-sm text-text-muted">
+              Starting {formatDateLabel(new Date(computedStartDate))}
+            </p>
+          </FormCard>
 
-          {/* End date (deadline) */}
-          {kind === "deadline" && (
-            <FieldGroup label="End date">
-              <div className="mb-2 flex flex-wrap gap-1.5">
+          {/* Repeating toggle */}
+          <FormCard>
+            <div className="flex items-center justify-between">
+              <span className="font-serif text-base font-medium">
+                Make this a repeating goal?
+              </span>
+              <ToggleSwitch
+                checked={isRepeating}
+                onChange={setIsRepeating}
+              />
+            </div>
+          </FormCard>
+
+          {/* Ending section (deadline only) */}
+          {!isRepeating && (
+            <FormCard title="Ending">
+              <div className="mb-2 flex flex-wrap gap-2">
                 {(
                   [
                     ["week", "This week"],
                     ["month", "This month"],
                     ["year", "This year"],
+                    ["in1week", "In 1 week"],
+                    ["in1month", "In 1 month"],
                     ["custom", "Custom"],
                   ] as [EndPreset, string][]
                 ).map(([value, label]) => (
-                  <PillButton
+                  <PresetPill
                     key={value}
                     active={endPreset === value}
                     onClick={() => setEndPreset(value)}
-                    small
                   >
                     {label}
-                  </PillButton>
+                  </PresetPill>
                 ))}
               </div>
               {endPreset === "custom" && (
@@ -372,15 +374,18 @@ export function TargetFormModal({
                   type="date"
                   value={endCustomDate}
                   onChange={(e) => setEndCustomDate(e.target.value)}
-                  className="w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-2.5 font-serif outline-none focus:border-accent"
+                  className="mt-2 w-full cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-white px-4 py-2.5 font-serif outline-none focus:border-accent"
                 />
               )}
-            </FieldGroup>
+              <p className="mt-2 text-sm text-text-muted">
+                Ending {formatDateLabel(new Date(computedEndDate))}
+              </p>
+            </FormCard>
           )}
 
-          {/* Cadence (rolling) */}
-          {kind === "rolling" && (
-            <FieldGroup label="Repeat every">
+          {/* Cadence (rolling only) */}
+          {isRepeating && (
+            <FormCard title="Repeat every">
               <div className="flex items-center gap-3">
                 <input
                   type="number"
@@ -391,12 +396,12 @@ export function TargetFormModal({
                       Math.max(1, parseInt(e.target.value) || 1)
                     )
                   }
-                  className="w-16 rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
+                  className="w-16 rounded-(--radius-input) border-[1.5px] border-border bg-white px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
                 />
                 <select
                   value={cadenceUnit}
                   onChange={(e) => setCadenceUnit(e.target.value)}
-                  className="cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-2.5 font-serif outline-none focus:border-accent"
+                  className="cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-white px-4 py-2.5 font-serif outline-none focus:border-accent"
                 >
                   <option value="day">
                     {cadenceValue === 1 ? "Day" : "Days"}
@@ -412,55 +417,51 @@ export function TargetFormModal({
                   </option>
                 </select>
               </div>
-            </FieldGroup>
+            </FormCard>
           )}
 
           {/* Anchor: weekly */}
-          {kind === "rolling" && cadenceUnit === "week" && (
-            <FieldGroup label="Resets on">
-              <div className="flex flex-wrap gap-1.5">
+          {isRepeating && cadenceUnit === "week" && (
+            <FormCard title="Resets on">
+              <div className="flex flex-wrap gap-2">
                 {WEEKDAYS.map((wd) => (
-                  <PillButton
+                  <PresetPill
                     key={wd.value}
                     active={anchorWeekday === wd.value}
                     onClick={() => setAnchorWeekday(wd.value)}
-                    small
                   >
                     {wd.label}
-                  </PillButton>
+                  </PresetPill>
                 ))}
               </div>
-            </FieldGroup>
+            </FormCard>
           )}
 
           {/* Anchor: monthly */}
-          {kind === "rolling" && cadenceUnit === "month" && (
-            <FieldGroup label="Resets on">
-              <div className="mb-2 flex flex-wrap gap-1.5">
-                <PillButton
+          {isRepeating && cadenceUnit === "month" && (
+            <FormCard title="Resets on">
+              <div className="mb-2 flex flex-wrap gap-2">
+                <PresetPill
                   active={anchorDayPreset === "start"}
                   onClick={() => setAnchorDayPreset("start")}
-                  small
                 >
                   1st
-                </PillButton>
-                <PillButton
+                </PresetPill>
+                <PresetPill
                   active={anchorDayPreset === "end"}
                   onClick={() => setAnchorDayPreset("end")}
-                  small
                 >
                   Last day
-                </PillButton>
-                <PillButton
+                </PresetPill>
+                <PresetPill
                   active={anchorDayPreset === "custom"}
                   onClick={() => setAnchorDayPreset("custom")}
-                  small
                 >
                   Custom
-                </PillButton>
+                </PresetPill>
               </div>
               {anchorDayPreset === "custom" && (
-                <div>
+                <div className="mt-2">
                   <input
                     type="number"
                     min={1}
@@ -468,29 +469,32 @@ export function TargetFormModal({
                     value={anchorCustomDay}
                     onChange={(e) =>
                       setAnchorCustomDay(
-                        Math.min(31, Math.max(1, parseInt(e.target.value) || 1))
+                        Math.min(
+                          31,
+                          Math.max(1, parseInt(e.target.value) || 1)
+                        )
                       )
                     }
-                    className="w-20 rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
+                    className="w-20 rounded-(--radius-input) border-[1.5px] border-border bg-white px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
                   />
                   <span className="ml-2 text-sm text-text-muted">
                     {ordinalSuffix(anchorCustomDay)} of each month
                   </span>
                 </div>
               )}
-            </FieldGroup>
+            </FormCard>
           )}
 
           {/* Anchor: yearly */}
-          {kind === "rolling" && cadenceUnit === "year" && (
-            <FieldGroup label="Resets on">
+          {isRepeating && cadenceUnit === "year" && (
+            <FormCard title="Resets on">
               <div className="flex items-center gap-3">
                 <select
                   value={anchorMonth}
                   onChange={(e) =>
                     setAnchorMonth(parseInt(e.target.value))
                   }
-                  className="cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-4 py-2.5 font-serif outline-none focus:border-accent"
+                  className="cursor-pointer rounded-(--radius-input) border-[1.5px] border-border bg-white px-4 py-2.5 font-serif outline-none focus:border-accent"
                 >
                   {MONTHS.map((m, i) => (
                     <option key={i + 1} value={i + 1}>
@@ -511,7 +515,7 @@ export function TargetFormModal({
                       )
                     )
                   }
-                  className="w-20 rounded-(--radius-input) border-[1.5px] border-border bg-bg-light px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
+                  className="w-20 rounded-(--radius-input) border-[1.5px] border-border bg-white px-3 py-2.5 text-center font-serif outline-none focus:border-accent"
                 />
               </div>
               <p className="mt-1 text-sm text-text-muted">
@@ -520,71 +524,118 @@ export function TargetFormModal({
                 )}{" "}
                 of {MONTHS[anchorMonth - 1]}
               </p>
-            </FieldGroup>
+            </FormCard>
           )}
 
-          {/* Toggles */}
-          <div className="flex items-center gap-6">
-            <ToggleField
-              label="Featured"
-              checked={isFeatured}
-              onChange={setIsFeatured}
-            />
-            <ToggleField
-              label="Private"
-              checked={isPrivate}
-              onChange={setIsPrivate}
-            />
-          </div>
+          {/* Home screen */}
+          <FormCard title="Home screen">
+            <div className="flex items-center justify-between">
+              <span className="font-serif text-base">Show on home screen</span>
+              <ToggleSwitch
+                checked={isFeatured}
+                onChange={setIsFeatured}
+              />
+            </div>
+          </FormCard>
 
-          {/* Save button */}
-          <button
-            onClick={handleSave}
-            className="w-full cursor-pointer rounded-(--radius-input) bg-accent px-6 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
-          >
-            {isEdit ? "Save changes" : "Create target"}
-          </button>
+          {/* Visibility */}
+          <FormCard title="Visibility">
+            <div className="flex items-center justify-between">
+              <span className="font-serif text-base">Private target</span>
+              <ToggleSwitch
+                checked={isPrivate}
+                onChange={setIsPrivate}
+              />
+            </div>
+            <p className="mt-1 text-sm text-text-muted">
+              {isPrivate
+                ? "Only you can see this target."
+                : "This target is visible to friends."}
+            </p>
+          </FormCard>
+
+          {/* Action buttons */}
+          <div className="pt-2">
+            <button
+              onClick={handleSave}
+              className="w-full cursor-pointer rounded-(--radius-card) bg-accent py-4 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
+            >
+              {isEdit ? "Save changes" : "Set target"}
+            </button>
+            <button
+              onClick={onCancel}
+              className="mt-3 w-full cursor-pointer py-2 text-center font-serif text-base text-text-muted transition-colors hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function FieldGroup({
-  label,
+/* ── Shared sub-components ── */
+
+function FormCard({
+  title,
   children,
 }: {
-  label: string;
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-1.5 block text-sm font-semibold">{label}</label>
+    <div className="rounded-(--radius-card) bg-bg-medium p-5">
+      {title && (
+        <h2 className="mb-3 font-serif text-lg font-bold">{title}</h2>
+      )}
       {children}
     </div>
   );
 }
 
-function PillButton({
+function UnitCard({
   active,
   onClick,
-  children,
-  small,
+  label,
+  icon,
 }: {
   active: boolean;
   onClick: () => void;
-  children: React.ReactNode;
-  small?: boolean;
+  label: string;
+  icon: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`cursor-pointer rounded-full text-center font-semibold transition-colors ${
-        small ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"
-      } ${
+      className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-(--radius-input) border-2 py-5 transition-colors ${
         active
-          ? "bg-accent text-white"
-          : "bg-bg-medium text-text-muted hover:bg-accent/10"
+          ? "border-accent bg-accent text-white"
+          : "border-accent/30 bg-white text-accent"
+      }`}
+    >
+      {icon}
+      <span className="font-serif text-sm font-bold">{label}</span>
+    </button>
+  );
+}
+
+function PresetPill({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`cursor-pointer rounded-(--radius-input) border-2 px-3.5 py-2 text-center font-serif text-sm font-semibold transition-colors ${
+        active
+          ? "border-accent bg-accent text-white"
+          : "border-accent/30 bg-white text-accent"
       }`}
     >
       {children}
@@ -592,33 +643,28 @@ function PillButton({
   );
 }
 
-function ToggleField({
-  label,
+function ToggleSwitch({
   checked,
   onChange,
 }: {
-  label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 text-sm">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative h-6 w-11 cursor-pointer rounded-full transition-colors ${
-          checked ? "bg-accent" : "bg-border"
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-8 w-14 cursor-pointer rounded-full transition-colors ${
+        checked ? "bg-accent" : "bg-border"
+      }`}
+    >
+      <span
+        className={`absolute top-1 left-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-6" : ""
         }`}
-      >
-        <span
-          className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-            checked ? "translate-x-5" : ""
-          }`}
-        />
-      </button>
-      <span className="font-medium text-text-primary">{label}</span>
-    </label>
+      />
+    </button>
   );
 }
