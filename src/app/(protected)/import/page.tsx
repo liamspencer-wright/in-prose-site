@@ -119,6 +119,25 @@ const STATUS_LABEL: Record<string, string> = {
   dnf: "DNF",
 };
 
+const STATUS_OPTIONS = [
+  { value: "to_read", label: "To read" },
+  { value: "reading", label: "Reading" },
+  { value: "finished", label: "Finished" },
+  { value: "dnf", label: "DNF" },
+];
+
+const OWNERSHIP_OPTIONS = [
+  { value: "not_owned", label: "Not owned" },
+  { value: "owned", label: "Owned" },
+  { value: "borrowed", label: "Borrowed" },
+];
+
+const VISIBILITY_OPTIONS = [
+  { value: "public", label: "Public" },
+  { value: "friends_only", label: "Friends only" },
+  { value: "private", label: "Private" },
+];
+
 /* ── Rating normalisation ── */
 
 function normaliseRating(raw: string | null, scale: RatingScale): number | null {
@@ -214,6 +233,7 @@ export default function ImportPage() {
   const [fieldMap, setFieldMap] = useState<Record<string, number | null>>({});
   const [ratingScale, setRatingScale] = useState<RatingScale>("0-5");
   const [dateFormat, setDateFormat] = useState<DateFormat>("auto");
+  const [statusMap, setStatusMap] = useState<Record<string, string>>({});
   const [rows, setRows] = useState<ImportRow[]>([]);
   const [existingBooks, setExistingBooks] = useState<
     Map<string, ExistingBook>
@@ -293,6 +313,21 @@ export default function ImportPage() {
       setRatingScale(detectRatingScale(allRatings));
     }
 
+    // Build initial status map from unique CSV values
+    const statusIdx = fieldMap.status ?? -1;
+    if (statusIdx >= 0) {
+      const uniqueStatuses = new Set<string>();
+      for (const row of rawRows) {
+        const s = row[statusIdx]?.trim();
+        if (s) uniqueStatuses.add(s);
+      }
+      const initialMap: Record<string, string> = {};
+      for (const s of uniqueStatuses) {
+        initialMap[s] = mapStatus(s);
+      }
+      setStatusMap(initialMap);
+    }
+
     setStep("validate");
   }, [fieldMap, rawRows]);
 
@@ -329,7 +364,9 @@ export default function ImportPage() {
         titleIdx >= 0 ? (row[titleIdx]?.trim() || null) : null;
 
       const rating = normaliseRating(csvRawRating, ratingScale);
-      const mappedStatus = mapStatus(csvRawStatus);
+      const mappedStatus = csvRawStatus
+        ? statusMap[csvRawStatus] ?? mapStatus(csvRawStatus)
+        : "to_read";
       const startedAt = normaliseDate(csvRawStarted, dateFormat);
       const finishedAt = normaliseDate(csvRawFinished, dateFormat);
 
@@ -371,7 +408,7 @@ export default function ImportPage() {
     setRows(deduped);
     setStep("fetching");
     fetchMetadata(deduped);
-  }, [fieldMap, rawRows, ratingScale, dateFormat]);
+  }, [fieldMap, rawRows, ratingScale, dateFormat, statusMap]);
 
   /* ── Metadata fetch ── */
 
@@ -638,6 +675,10 @@ export default function ImportPage() {
           onRatingScaleChange={setRatingScale}
           dateFormat={dateFormat}
           onDateFormatChange={setDateFormat}
+          statusMap={statusMap}
+          onStatusMapChange={(csvVal, inProseVal) =>
+            setStatusMap((prev) => ({ ...prev, [csvVal]: inProseVal }))
+          }
           onConfirm={handleValidateConfirm}
           onBack={() => setStep("mapping")}
         />
@@ -977,6 +1018,8 @@ function ValidateStep({
   onRatingScaleChange,
   dateFormat,
   onDateFormatChange,
+  statusMap,
+  onStatusMapChange,
   onConfirm,
   onBack,
 }: {
@@ -987,6 +1030,8 @@ function ValidateStep({
   onRatingScaleChange: (s: RatingScale) => void;
   dateFormat: DateFormat;
   onDateFormatChange: (f: DateFormat) => void;
+  statusMap: Record<string, string>;
+  onStatusMapChange: (csvVal: string, inProseVal: string) => void;
   onConfirm: () => void;
   onBack: () => void;
 }) {
@@ -1061,30 +1106,42 @@ function ValidateStep({
       {/* Status validation */}
       {hasStatus && (
         <div className="mb-6 rounded-(--radius-card) border border-border p-4">
-          <h3 className="mb-3 font-semibold">Status</h3>
+          <h3 className="mb-3 font-semibold">Status mapping</h3>
+          <p className="mb-3 text-xs text-text-muted">
+            Choose which in prose status each CSV value should map to.
+          </p>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border-subtle">
                 <th className="px-2 py-1.5 text-left text-text-muted">
-                  CSV ({rawHeaders[statusIdx]})
+                  CSV value
                 </th>
                 <th className="px-2 py-1.5 text-left text-text-muted">
-                  in prose
+                  Maps to
                 </th>
               </tr>
             </thead>
             <tbody>
-              {/* Show unique statuses from sample */}
-              {getUniqueStatusSamples(rawRows, statusIdx).map(
-                ([raw, mapped], i) => (
-                  <tr key={i} className="border-b border-border-subtle">
-                    <td className="px-2 py-1.5">&ldquo;{raw}&rdquo;</td>
-                    <td className="px-2 py-1.5 font-semibold">
-                      {STATUS_LABEL[mapped] ?? mapped}
-                    </td>
-                  </tr>
-                )
-              )}
+              {Object.entries(statusMap).map(([csvVal, inProseVal]) => (
+                <tr key={csvVal} className="border-b border-border-subtle">
+                  <td className="px-2 py-1.5">&ldquo;{csvVal}&rdquo;</td>
+                  <td className="px-2 py-1.5">
+                    <select
+                      value={inProseVal}
+                      onChange={(e) =>
+                        onStatusMapChange(csvVal, e.target.value)
+                      }
+                      className="cursor-pointer rounded border border-accent bg-accent/5 px-2 py-1 font-serif text-sm outline-none"
+                    >
+                      {STATUS_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -1170,22 +1227,6 @@ function ValidateStep({
   );
 }
 
-function getUniqueStatusSamples(
-  rows: string[][],
-  idx: number
-): [string, string][] {
-  const seen = new Set<string>();
-  const result: [string, string][] = [];
-  for (const row of rows) {
-    const raw = row[idx]?.trim();
-    if (!raw || seen.has(raw.toLowerCase())) continue;
-    seen.add(raw.toLowerCase());
-    result.push([raw, mapStatus(raw)]);
-    if (result.length >= 8) break;
-  }
-  return result;
-}
-
 function getDateSamples(
   rows: string[][],
   startedIdx: number,
@@ -1237,27 +1278,6 @@ function FetchingStep({
     </div>
   );
 }
-
-/* ── Shared review components ── */
-
-const STATUS_OPTIONS = [
-  { value: "to_read", label: "To read" },
-  { value: "reading", label: "Reading" },
-  { value: "finished", label: "Finished" },
-  { value: "dnf", label: "DNF" },
-];
-
-const OWNERSHIP_OPTIONS = [
-  { value: "not_owned", label: "Not owned" },
-  { value: "owned", label: "Owned" },
-  { value: "borrowed", label: "Borrowed" },
-];
-
-const VISIBILITY_OPTIONS = [
-  { value: "public", label: "Public" },
-  { value: "friends_only", label: "Friends only" },
-  { value: "private", label: "Private" },
-];
 
 /* ── Review Section (Ready to import) ── */
 
