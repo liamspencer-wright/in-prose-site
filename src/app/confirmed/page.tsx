@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 
 export default function ConfirmedPage() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center p-8 text-center">
+    <div className="flex min-h-svh flex-col items-center justify-center p-8 text-center max-sm:px-4">
       <main>
         <h1 className="mb-2 text-4xl font-bold text-accent">
           Email confirmed!

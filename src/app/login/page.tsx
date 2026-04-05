@@ -87,7 +87,7 @@ function LoginForm() {
         priority
       />
 
-      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)] max-sm:p-5">
         <h1 className="mb-6 text-center text-3xl font-bold">Log in</h1>
 
         {contextMessage && (

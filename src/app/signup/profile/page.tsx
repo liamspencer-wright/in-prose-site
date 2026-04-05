@@ -380,7 +380,7 @@ export default function ProfileSetupPage() {
         </div>
       </div>
 
-      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)] max-sm:p-5">
         {step === 1 ? (
           <>
             <h1 className="mb-2 text-center text-3xl font-bold">
