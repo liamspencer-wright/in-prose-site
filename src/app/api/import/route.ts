@@ -249,35 +249,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Fallback to Open Library
-  const olMeta = await fetchOpenLibrary(isbn);
-  if (olMeta) {
-    await supabase.from("books").upsert(
-      {
-        isbn13: olMeta.isbn13,
-        title: olMeta.title,
-        publisher: olMeta.publisher,
-        image: olMeta.coverUrl,
-        pages: olMeta.pages,
-        date_published: olMeta.pubYear ? String(olMeta.pubYear) : null,
-      },
-      { onConflict: "isbn13", ignoreDuplicates: true }
-    );
-
-    for (let i = 0; i < olMeta.authors.length; i++) {
-      const name = olMeta.authors[i]?.trim();
-      if (!name) continue;
-      await supabase.rpc("upsert_author_and_link", {
-        isbn13_in: olMeta.isbn13,
-        author_name_in: name,
-        sort_name_in: null,
-        ord_in: i + 1,
-      });
-    }
-
-    return NextResponse.json(olMeta);
-  }
-
   return NextResponse.json(null);
 }
 
@@ -329,53 +300,3 @@ async function fetchISBNdb(
   }
 }
 
-async function fetchOpenLibrary(isbn: string): Promise<BookMeta | null> {
-  try {
-    const res = await fetch(
-      `https://openlibrary.org/isbn/${isbn}.json`,
-      { signal: AbortSignal.timeout(4000) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    const title = data.title ?? "Untitled";
-    const pages = typeof data.number_of_pages === "number" ? data.number_of_pages : null;
-    const pubDate = data.publish_date as string | undefined;
-    const pubYear = pubDate ? parseInt(pubDate.slice(-4)) || null : null;
-    const publishers = data.publishers as string[] | undefined;
-    const coverId = data.covers?.[0];
-    const coverUrl = coverId
-      ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
-      : null;
-
-    // Fetch authors
-    const authorKeys: { key: string }[] = data.authors ?? [];
-    const authors: string[] = [];
-    for (const ak of authorKeys.slice(0, 5)) {
-      try {
-        const aRes = await fetch(`https://openlibrary.org${ak.key}.json`, {
-          signal: AbortSignal.timeout(2000),
-        });
-        if (aRes.ok) {
-          const aData = await aRes.json();
-          if (aData.name) authors.push(aData.name);
-        }
-      } catch {
-        // skip
-      }
-    }
-
-    return {
-      isbn13: isbn,
-      title,
-      authors,
-      coverUrl,
-      pubYear,
-      publisher: publishers?.[0] ?? null,
-      pages,
-      synopsis: null,
-    };
-  } catch {
-    return null;
-  }
-}
