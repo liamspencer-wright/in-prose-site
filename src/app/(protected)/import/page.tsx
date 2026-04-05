@@ -290,8 +290,53 @@ export default function ImportPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef(false);
+
+  /* ── Bulk edit helpers ── */
+
+  const toggleChecked = useCallback((id: number) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllChecked = useCallback((ids: number[]) => {
+    setCheckedIds((prev) => {
+      const allChecked = ids.every((id) => prev.has(id));
+      if (allChecked) return new Set();
+      return new Set(ids);
+    });
+  }, []);
+
+  const bulkUpdate = useCallback(
+    (fields: { status?: string; ownership?: string; visibility?: string }) => {
+      setRows((prev) =>
+        prev.map((r) => {
+          if (!checkedIds.has(r.id)) return r;
+          const updated = { ...r };
+          if (fields.status !== undefined) {
+            updated.status = fields.status;
+            // Clear dates if setting to to_read
+            if (fields.status === "to_read") {
+              updated.started_at = null;
+              updated.finished_at = null;
+            }
+          }
+          if (fields.ownership !== undefined)
+            updated.ownership = fields.ownership;
+          if (fields.visibility !== undefined)
+            updated.visibility = fields.visibility;
+          return updated;
+        })
+      );
+    },
+    [checkedIds]
+  );
 
   /* ── Upload step ── */
 
@@ -757,13 +802,17 @@ export default function ImportPage() {
           onUpdate={updateRow}
           onNext={
             nextReviewStep("review-ready")
-              ? () => setStep(nextReviewStep("review-ready")!)
+              ? () => { setCheckedIds(new Set()); setStep(nextReviewStep("review-ready")!); }
               : undefined
           }
           onSubmit={!nextReviewStep("review-ready") ? handleSubmit : undefined}
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -775,12 +824,12 @@ export default function ImportPage() {
           onUpdate={updateRow}
           onNext={
             nextReviewStep("review-library")
-              ? () => setStep(nextReviewStep("review-library")!)
+              ? () => { setCheckedIds(new Set()); setStep(nextReviewStep("review-library")!); }
               : undefined
           }
           onPrev={
             prevReviewStep("review-library")
-              ? () => setStep(prevReviewStep("review-library")!)
+              ? () => { setCheckedIds(new Set()); setStep(prevReviewStep("review-library")!); }
               : undefined
           }
           onSubmit={
@@ -789,6 +838,10 @@ export default function ImportPage() {
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -800,13 +853,17 @@ export default function ImportPage() {
           onUpdateMeta={updateRowMeta}
           onPrev={
             prevReviewStep("review-notfound")
-              ? () => setStep(prevReviewStep("review-notfound")!)
+              ? () => { setCheckedIds(new Set()); setStep(prevReviewStep("review-notfound")!); }
               : undefined
           }
           onSubmit={handleSubmit}
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -1354,6 +1411,10 @@ function ReviewSection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   title: string;
   subtitle: string;
@@ -1365,8 +1426,10 @@ function ReviewSection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
 
   return (
     <div>
@@ -1383,7 +1446,18 @@ function ReviewSection({
         }
         onToggle={onToggle}
         onUpdate={onUpdate}
+        checkedIds={checkedIds}
+        onToggleChecked={onToggleChecked}
+        onToggleAllChecked={() => onToggleAllChecked(rowIds)}
       />
+
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
 
       <ReviewNav
         onBack={onBack}
@@ -1409,6 +1483,10 @@ function ReviewLibrarySection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   rows: ImportRow[];
   existingBooks: Map<string, ExistingBook>;
@@ -1420,8 +1498,11 @@ function ReviewLibrarySection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
+  const allChecked = rowIds.length > 0 && checkedCount === rowIds.length;
 
   return (
     <div>
@@ -1433,6 +1514,20 @@ function ReviewLibrarySection({
         </p>
       </div>
 
+      {rows.length > 1 && (
+        <div className="mb-2 px-1">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={() => onToggleAllChecked(rowIds)}
+              className="accent-accent"
+            />
+            <span className="font-medium text-text-muted">Select all for bulk edit</span>
+          </label>
+        </div>
+      )}
+
       <div className="mb-6 space-y-3">
         {rows.map((row) => {
           const existing = existingBooks.get(row.isbn13);
@@ -1440,21 +1535,30 @@ function ReviewLibrarySection({
           const authors = row.meta?.authors?.join(", ") ?? "";
           const coverUrl = row.meta?.coverUrl ?? existing?.cover_url;
           const isExpanded = expandedId === row.id;
+          const isChecked = checkedIds.has(row.id);
 
           return (
             <div
               key={row.id}
               className={`rounded-(--radius-card) border transition-colors ${
                 row.selected ? "border-accent" : "border-border"
-              }`}
+              } ${isChecked ? "ring-2 ring-accent/30" : ""}`}
             >
               {/* Header */}
               <div className="flex items-center gap-3 px-4 py-3">
                 <input
                   type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(row.id)}
+                  className="accent-accent"
+                  title="Select for bulk edit"
+                />
+                <input
+                  type="checkbox"
                   checked={row.selected}
                   onChange={() => onToggle(row.id)}
                   className="accent-accent"
+                  title="Include in import"
                 />
                 {coverUrl ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -1502,6 +1606,14 @@ function ReviewLibrarySection({
           );
         })}
       </div>
+
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
 
       <ReviewNav
         onBack={onBack}
@@ -1702,6 +1814,10 @@ function ReviewNotFoundSection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   rows: ImportRow[];
   onToggle: (id: number) => void;
@@ -1712,12 +1828,16 @@ function ReviewNotFoundSection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [searchingId, setSearchingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<BookMeta[]>([]);
   const [searching, setSearching] = useState(false);
+
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
+  const allChecked = rowIds.length > 0 && checkedCount === rowIds.length;
 
   const handleSearch = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -1750,25 +1870,48 @@ function ReviewNotFoundSection({
         </p>
       </div>
 
+      {rows.length > 1 && (
+        <div className="mb-2 px-1">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={() => onToggleAllChecked(rowIds)}
+              className="accent-accent"
+            />
+            <span className="font-medium text-text-muted">Select all for bulk edit</span>
+          </label>
+        </div>
+      )}
+
       <div className="mb-6 space-y-3">
         {rows.map((row) => {
           const title = row.meta?.title ?? row.csvTitle ?? row.isbn13;
           const isExpanded = expandedId === row.id;
           const isSearching = searchingId === row.id;
+          const isChecked = checkedIds.has(row.id);
 
           return (
             <div
               key={row.id}
               className={`rounded-(--radius-card) border transition-colors ${
                 row.selected ? "border-border" : "border-border opacity-40"
-              }`}
+              } ${isChecked ? "ring-2 ring-accent/30" : ""}`}
             >
               <div className="flex items-center gap-3 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(row.id)}
+                  className="accent-accent"
+                  title="Select for bulk edit"
+                />
                 <input
                   type="checkbox"
                   checked={row.selected}
                   onChange={() => onToggle(row.id)}
                   className="accent-accent"
+                  title="Include in import"
                 />
                 <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-bg-medium text-[8px] text-text-subtle">
                   ?
@@ -1885,6 +2028,14 @@ function ReviewNotFoundSection({
         })}
       </div>
 
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
+
       <ReviewNav
         onBack={onBack}
         onPrev={onPrev}
@@ -1904,18 +2055,36 @@ function BookTable({
   onToggleExpand,
   onToggle,
   onUpdate,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
 }: {
   rows: ImportRow[];
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
   onToggle: (id: number) => void;
   onUpdate: (id: number, field: string, value: string | number | null) => void;
+  checkedIds: Set<number>;
+  onToggleChecked: (id: number) => void;
+  onToggleAllChecked: () => void;
 }) {
+  const rowIds = rows.map((r) => r.id);
+  const allChecked = rowIds.length > 0 && rowIds.every((id) => checkedIds.has(id));
+
   return (
     <div className="mb-6 overflow-x-auto rounded-(--radius-card) border border-border">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-bg-light">
+            <th className="w-10 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={onToggleAllChecked}
+                className="accent-accent"
+                title="Select all for bulk edit"
+              />
+            </th>
             <th className="w-10 px-3 py-2.5" />
             <th className="px-3 py-2.5 text-left font-semibold">Book</th>
             <th className="px-3 py-2.5 text-left font-semibold max-sm:hidden">
@@ -1945,6 +2114,8 @@ function BookTable({
                 onToggleExpand={() => onToggleExpand(row.id)}
                 onToggle={() => onToggle(row.id)}
                 onUpdate={(field, value) => onUpdate(row.id, field, value)}
+                isChecked={checkedIds.has(row.id)}
+                onToggleChecked={() => onToggleChecked(row.id)}
               />
             );
           })}
@@ -1963,6 +2134,8 @@ function BookTableRow({
   onToggleExpand,
   onToggle,
   onUpdate,
+  isChecked,
+  onToggleChecked,
 }: {
   row: ImportRow;
   title: string;
@@ -1972,20 +2145,32 @@ function BookTableRow({
   onToggleExpand: () => void;
   onToggle: () => void;
   onUpdate: (field: string, value: string | number | null) => void;
+  isChecked: boolean;
+  onToggleChecked: () => void;
 }) {
   return (
     <>
       <tr
         className={`border-b border-border-subtle transition-colors ${
           !row.selected ? "opacity-40" : ""
-        }`}
+        } ${isChecked ? "bg-accent/5" : ""}`}
       >
+        <td className="px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={onToggleChecked}
+            className="accent-accent"
+            title="Select for bulk edit"
+          />
+        </td>
         <td className="px-3 py-2.5">
           <input
             type="checkbox"
             checked={row.selected}
             onChange={onToggle}
             className="accent-accent"
+            title="Include in import"
           />
         </td>
         <td className="px-3 py-2.5">
@@ -2054,7 +2239,7 @@ function BookTableRow({
 
       {expanded && (
         <tr className="border-b border-border-subtle bg-bg-light/50">
-          <td colSpan={5} className="px-6 py-4">
+          <td colSpan={6} className="px-6 py-4">
             <EditFields row={row} onUpdate={onUpdate} />
           </td>
         </tr>
@@ -2164,6 +2349,118 @@ function EditFields({
             className="w-full rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
           />
         </FieldGroup>
+      </div>
+    </div>
+  );
+}
+
+/* ── Bulk Edit Toolbar ── */
+
+type BulkEditProps = {
+  checkedIds: Set<number>;
+  onToggleChecked: (id: number) => void;
+  onToggleAllChecked: (ids: number[]) => void;
+  onBulkUpdate: (fields: {
+    status?: string;
+    ownership?: string;
+    visibility?: string;
+  }) => void;
+};
+
+function BulkEditToolbar({
+  checkedCount,
+  onBulkUpdate,
+  onClear,
+}: {
+  checkedCount: number;
+  onBulkUpdate: BulkEditProps["onBulkUpdate"];
+  onClear: () => void;
+}) {
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkOwnership, setBulkOwnership] = useState("");
+  const [bulkVisibility, setBulkVisibility] = useState("");
+
+  const handleApply = () => {
+    const fields: {
+      status?: string;
+      ownership?: string;
+      visibility?: string;
+    } = {};
+    if (bulkStatus) fields.status = bulkStatus;
+    if (bulkOwnership) fields.ownership = bulkOwnership;
+    if (bulkVisibility) fields.visibility = bulkVisibility;
+    if (Object.keys(fields).length === 0) return;
+    onBulkUpdate(fields);
+    setBulkStatus("");
+    setBulkOwnership("");
+    setBulkVisibility("");
+  };
+
+  const hasSelection = bulkStatus || bulkOwnership || bulkVisibility;
+
+  return (
+    <div className="sticky bottom-4 z-10 mx-auto max-w-4xl rounded-(--radius-card) border border-accent bg-white px-4 py-3 shadow-lg">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold">
+          {checkedCount} book{checkedCount !== 1 ? "s" : ""} selected
+        </span>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Status...</option>
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={bulkOwnership}
+            onChange={(e) => setBulkOwnership(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Ownership...</option>
+            {OWNERSHIP_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={bulkVisibility}
+            onChange={(e) => setBulkVisibility(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Visibility...</option>
+            {VISIBILITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleApply}
+            disabled={!hasSelection}
+            className="cursor-pointer rounded-(--radius-input) bg-accent px-4 py-1.5 font-serif text-sm font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+          >
+            Apply
+          </button>
+          <button
+            onClick={onClear}
+            className="cursor-pointer rounded-(--radius-input) border border-border px-4 py-1.5 font-serif text-sm font-semibold transition-colors hover:bg-bg-medium"
+          >
+            Clear
+          </button>
+        </div>
       </div>
     </div>
   );
