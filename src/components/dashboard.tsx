@@ -694,7 +694,7 @@ function CurrentlyReadingCard({
   return (
     <div className="flex overflow-hidden rounded-(--radius-card) shadow-[0_2px_12px_rgba(0,0,0,0.08)]">
       {/* Left: blurred cover background */}
-      <div className="relative flex w-[140px] flex-shrink-0 items-center justify-center overflow-hidden py-5">
+      <div className="relative flex w-[140px] flex-shrink-0 items-center justify-center overflow-hidden py-5 max-sm:w-[110px]">
         {book.cover_url && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -721,13 +721,13 @@ function CurrentlyReadingCard({
       </div>
 
       {/* Middle: orange background with label + info */}
-      <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 bg-accent px-5 py-5">
+      <div className="flex min-w-0 flex-1 flex-col justify-center gap-2 bg-accent px-5 py-5 max-sm:px-3">
         <span className="w-fit rounded bg-black/20 px-2.5 py-1 text-xs font-bold text-white">
           Currently reading
         </span>
         <Link
           href={`/library/${book.isbn13}`}
-          className="text-xl font-bold text-white hover:underline"
+          className="text-xl font-bold text-white hover:underline max-sm:text-lg"
         >
           {book.title ?? "Unknown Title"}
         </Link>
