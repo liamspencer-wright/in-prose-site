@@ -51,79 +51,104 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
+      let processed = 0;
 
-  // Insert new books
-  for (const book of books) {
-    if (!book.isbn13 || typeof book.isbn13 !== "string") {
-      result.skipped++;
-      continue;
-    }
+      // Insert new books
+      for (const book of books) {
+        if (!book.isbn13 || typeof book.isbn13 !== "string") {
+          result.skipped++;
+          processed++;
+          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+          continue;
+        }
 
-    const { error: bookError } = await supabase.from("books").upsert(
-      { isbn13: book.isbn13 },
-      { onConflict: "isbn13", ignoreDuplicates: true }
-    );
+        const { error: bookError } = await supabase.from("books").upsert(
+          { isbn13: book.isbn13 },
+          { onConflict: "isbn13", ignoreDuplicates: true }
+        );
 
-    if (bookError) {
-      result.errors.push(`${book.isbn13}: failed to upsert book`);
-      continue;
-    }
+        if (bookError) {
+          result.errors.push(`${book.isbn13}: failed to upsert book`);
+          processed++;
+          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+          continue;
+        }
 
-    const { error: linkError } = await supabase.from("user_books").insert({
-      user_id: user.id,
-      isbn13: book.isbn13,
-      status: book.status ?? "to_read",
-      ownership: book.ownership ?? "not_owned",
-      visibility: book.visibility ?? "public",
-      rating: book.rating ?? null,
-      review: book.review ?? null,
-      started_at: book.started_at ?? null,
-      finished_at: book.finished_at ?? null,
-    });
+        const { error: linkError } = await supabase.from("user_books").insert({
+          user_id: user.id,
+          isbn13: book.isbn13,
+          status: book.status ?? "to_read",
+          ownership: book.ownership ?? "not_owned",
+          visibility: book.visibility ?? "public",
+          rating: book.rating ?? null,
+          review: book.review ?? null,
+          started_at: book.started_at ?? null,
+          finished_at: book.finished_at ?? null,
+        });
 
-    if (linkError) {
-      if (linkError.code === "23505") {
-        result.skipped++;
-      } else {
-        result.errors.push(`${book.isbn13}: ${linkError.message}`);
+        if (linkError) {
+          if (linkError.code === "23505") {
+            result.skipped++;
+          } else {
+            result.errors.push(`${book.isbn13}: ${linkError.message}`);
+          }
+        } else {
+          result.added++;
+        }
+
+        processed++;
+        controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
-      continue;
-    }
 
-    result.added++;
-  }
+      // Update existing books
+      for (const book of updates) {
+        if (!book.isbn13 || typeof book.isbn13 !== "string") {
+          result.skipped++;
+          processed++;
+          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+          continue;
+        }
 
-  // Update existing books
-  for (const book of updates) {
-    if (!book.isbn13 || typeof book.isbn13 !== "string") {
-      result.skipped++;
-      continue;
-    }
+        const { error: updateError } = await supabase
+          .from("user_books")
+          .update({
+            status: book.status ?? "to_read",
+            ownership: book.ownership ?? "not_owned",
+            visibility: book.visibility ?? "public",
+            rating: book.rating ?? null,
+            review: book.review ?? null,
+            started_at: book.started_at ?? null,
+            finished_at: book.finished_at ?? null,
+          })
+          .eq("user_id", user.id)
+          .eq("isbn13", book.isbn13);
 
-    const { error: updateError } = await supabase
-      .from("user_books")
-      .update({
-        status: book.status ?? "to_read",
-        ownership: book.ownership ?? "not_owned",
-        visibility: book.visibility ?? "public",
-        rating: book.rating ?? null,
-        review: book.review ?? null,
-        started_at: book.started_at ?? null,
-        finished_at: book.finished_at ?? null,
-      })
-      .eq("user_id", user.id)
-      .eq("isbn13", book.isbn13);
+        if (updateError) {
+          result.errors.push(`${book.isbn13}: ${updateError.message}`);
+        } else {
+          result.updated++;
+        }
 
-    if (updateError) {
-      result.errors.push(`${book.isbn13}: ${updateError.message}`);
-      continue;
-    }
+        processed++;
+        controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+      }
 
-    result.updated++;
-  }
+      // Final result line
+      controller.enqueue(encoder.encode(JSON.stringify({ result }) + "\n"));
+      controller.close();
+    },
+  });
 
-  return NextResponse.json(result);
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Transfer-Encoding": "chunked",
+    },
+  });
 }
 
 /* ── Metadata lookup endpoint ── */
@@ -144,14 +169,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "isbn is required" }, { status: 400 });
   }
 
+  console.log(`[import/meta] Looking up ISBN: ${isbn}`);
+
   // Check local database first
-  const { data: localBook } = await supabase
+  const { data: localBook, error: dbError } = await supabase
     .from("books")
     .select("isbn13, title, image, publisher, date_published, pages, synopsis")
     .eq("isbn13", isbn)
     .maybeSingle();
 
+  if (dbError) {
+    console.error(`[import/meta] DB error for ${isbn}:`, dbError.message);
+  }
+
   if (localBook?.title) {
+    console.log(`[import/meta] Found ${isbn} in local DB: "${localBook.title}"`);
     // Get authors
     const { data: authorRows } = await supabase
       .from("book_authors")
@@ -182,8 +214,10 @@ export async function GET(request: NextRequest) {
 
   // Fallback to ISBNdb
   const apiKey = process.env.ISBNDB_API_KEY;
+  console.log(`[import/meta] ISBNdb key present: ${!!apiKey}, trying ISBNdb for ${isbn}`);
   if (apiKey) {
     const meta = await fetchISBNdb(isbn, apiKey);
+    console.log(`[import/meta] ISBNdb result for ${isbn}:`, meta ? `"${meta.title}"` : "null");
     if (meta) {
       // Upsert into books table for caching
       await supabase.from("books").upsert(
@@ -265,8 +299,9 @@ async function fetchISBNdb(
   try {
     const res = await fetch(`${ISBNDB_BASE}/book/${isbn}`, {
       headers: { Authorization: apiKey, "x-api-key": apiKey },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4000),
     });
+    console.log(`[import/isbndb] ${isbn} → HTTP ${res.status}`);
     if (!res.ok) return null;
     const data = await res.json();
     const book = data.book;
@@ -288,7 +323,8 @@ async function fetchISBNdb(
       pages: typeof book.pages === "number" ? book.pages : null,
       synopsis: book.synopsis ?? null,
     };
-  } catch {
+  } catch (err) {
+    console.error(`[import/isbndb] ${isbn} error:`, err);
     return null;
   }
 }
@@ -297,7 +333,7 @@ async function fetchOpenLibrary(isbn: string): Promise<BookMeta | null> {
   try {
     const res = await fetch(
       `https://openlibrary.org/isbn/${isbn}.json`,
-      { signal: AbortSignal.timeout(8000) }
+      { signal: AbortSignal.timeout(4000) }
     );
     if (!res.ok) return null;
     const data = await res.json();
@@ -318,7 +354,7 @@ async function fetchOpenLibrary(isbn: string): Promise<BookMeta | null> {
     for (const ak of authorKeys.slice(0, 5)) {
       try {
         const aRes = await fetch(`https://openlibrary.org${ak.key}.json`, {
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(2000),
         });
         if (aRes.ok) {
           const aData = await aRes.json();

@@ -63,6 +63,7 @@ type Step =
   | "review-ready"
   | "review-library"
   | "review-notfound"
+  | "importing"
   | "done";
 
 type ImportResult = {
@@ -289,6 +290,8 @@ export default function ImportPage() {
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
   const [fetchStartTime, setFetchStartTime] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importStartTime, setImportStartTime] = useState<number | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
@@ -673,6 +676,9 @@ export default function ImportPage() {
 
     setSubmitting(true);
     setError(null);
+    setImportProgress(null);
+    setImportStartTime(Date.now());
+    setStep("importing");
 
     try {
       const res = await fetch("/api/import", {
@@ -706,16 +712,71 @@ export default function ImportPage() {
         const data = await res.json();
         setError(data.error ?? "Import failed");
         setSubmitting(false);
+        setStep("review-ready");
         return;
       }
 
-      const data: ImportResult = await res.json();
-      setResult(data);
-      setStep("done");
+      // Read NDJSON stream
+      const reader = res.body?.getReader();
+      if (!reader) {
+        const data: ImportResult = await res.json();
+        setResult(data);
+        setStep("done");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalResult: ImportResult | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.progress !== undefined) {
+              setImportProgress({ done: parsed.progress, total: parsed.total });
+            }
+            if (parsed.result) {
+              finalResult = parsed.result;
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const parsed = JSON.parse(buffer);
+          if (parsed.result) finalResult = parsed.result;
+        } catch {
+          // skip
+        }
+      }
+
+      if (finalResult) {
+        setResult(finalResult);
+        setStep("done");
+      } else {
+        setError("Import completed but no result received.");
+        setStep("review-ready");
+      }
     } catch {
       setError("Network error. Please try again.");
+      setStep("review-ready");
     } finally {
       setSubmitting(false);
+      setImportProgress(null);
+      setImportStartTime(null);
     }
   }, [rows]);
 
@@ -795,6 +856,13 @@ export default function ImportPage() {
 
       {step === "fetching" && (
         <FetchingStep progress={fetchProgress} rows={rows} startTime={fetchStartTime} />
+      )}
+
+      {step === "importing" && (
+        <ImportingStep
+          progress={importProgress ?? { done: 0, total: 0 }}
+          startTime={importStartTime}
+        />
       )}
 
       {step === "review-ready" && (
@@ -1415,6 +1483,46 @@ function FetchingStep({
       <p className="text-sm text-text-muted">
         {progress.done} / {progress.total} books processed
         {found > 0 && ` \u2014 ${found} found`}
+      </p>
+      {estimate && (
+        <p className="mt-1 text-xs text-text-muted">{estimate}</p>
+      )}
+    </div>
+  );
+}
+
+function ImportingStep({
+  progress,
+  startTime,
+}: {
+  progress: { done: number; total: number };
+  startTime: number | null;
+}) {
+  const pct =
+    progress.total > 0
+      ? Math.round((progress.done / progress.total) * 100)
+      : 0;
+
+  const remaining = progress.total - progress.done;
+  const showEstimate = startTime && progress.done >= 3 && remaining > 0;
+  let estimate: string | null = null;
+  if (showEstimate) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avgPerBook = elapsed / progress.done;
+    estimate = formatTimeEstimate(remaining * avgPerBook);
+  }
+
+  return (
+    <div className="py-8 text-center">
+      <p className="mb-4 text-lg font-semibold">Importing books...</p>
+      <div className="mx-auto mb-4 h-3 w-full max-w-md overflow-hidden rounded-full bg-bg-medium">
+        <div
+          className="h-full rounded-full bg-accent transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-sm text-text-muted">
+        {progress.done} / {progress.total} imported
       </p>
       {estimate && (
         <p className="mt-1 text-xs text-text-muted">{estimate}</p>
