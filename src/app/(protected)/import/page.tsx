@@ -287,6 +287,7 @@ export default function ImportPage() {
     Map<string, ExistingBook>
   >(new Map());
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
+  const [fetchStartTime, setFetchStartTime] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -520,6 +521,7 @@ export default function ImportPage() {
   const fetchMetadata = useCallback(async (importRows: ImportRow[]) => {
     abortRef.current = false;
     setFetchProgress({ done: 0, total: importRows.length });
+    setFetchStartTime(null);
 
     // Fetch existing library ISBNs + their data
     const existingMap = new Map<string, ExistingBook>();
@@ -537,6 +539,8 @@ export default function ImportPage() {
     setExistingBooks(existingMap);
 
     const updated = [...importRows];
+    const batchStartTime = Date.now();
+    setFetchStartTime(batchStartTime);
 
     for (let i = 0; i < updated.length; i += 5) {
       if (abortRef.current) break;
@@ -790,7 +794,7 @@ export default function ImportPage() {
       )}
 
       {step === "fetching" && (
-        <FetchingStep progress={fetchProgress} rows={rows} />
+        <FetchingStep progress={fetchProgress} rows={rows} startTime={fetchStartTime} />
       )}
 
       {step === "review-ready" && (
@@ -1368,18 +1372,36 @@ function getDateSamples(
 
 /* ── Fetching Step ── */
 
+function formatTimeEstimate(seconds: number): string {
+  if (seconds < 60) return `~${Math.ceil(seconds)}s remaining`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return secs > 0 ? `~${mins}m ${secs}s remaining` : `~${mins}m remaining`;
+}
+
 function FetchingStep({
   progress,
   rows,
+  startTime,
 }: {
   progress: { done: number; total: number };
   rows: ImportRow[];
+  startTime: number | null;
 }) {
   const pct =
     progress.total > 0
       ? Math.round((progress.done / progress.total) * 100)
       : 0;
   const found = rows.filter((r) => r.metaStatus === "found").length;
+
+  const remaining = progress.total - progress.done;
+  const showEstimate = startTime && progress.done >= 5 && remaining > 0;
+  let estimate: string | null = null;
+  if (showEstimate) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avgPerBook = elapsed / progress.done;
+    estimate = formatTimeEstimate(remaining * avgPerBook);
+  }
 
   return (
     <div className="py-8 text-center">
@@ -1394,6 +1416,9 @@ function FetchingStep({
         {progress.done} / {progress.total} books processed
         {found > 0 && ` \u2014 ${found} found`}
       </p>
+      {estimate && (
+        <p className="mt-1 text-xs text-text-muted">{estimate}</p>
+      )}
     </div>
   );
 }
