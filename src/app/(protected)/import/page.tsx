@@ -174,33 +174,81 @@ function detectRatingScale(ratings: (string | null)[]): RatingScale {
 
 /* ── Date normalisation ── */
 
+/**
+ * Scan all date strings in a column and determine the most likely format.
+ * If any date has its first number > 12, the column must be DD/MM/YYYY.
+ * If any date has its second number > 12, the column must be MM/DD/YYYY.
+ * If all values are YYYY-MM-DD, return that.
+ * Otherwise default to DD/MM/YYYY (UK locale).
+ */
+function detectDateFormat(dates: (string | null)[]): DateFormat {
+  let hasSlashDates = false;
+  let allIso = true;
+  let forceDDMM = false;
+  let forceMMDD = false;
+
+  for (const raw of dates) {
+    if (!raw || !raw.trim()) continue;
+    const s = raw.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      continue; // ISO format
+    }
+
+    allIso = false;
+
+    const slashMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+    if (slashMatch) {
+      hasSlashDates = true;
+      const a = parseInt(slashMatch[1]!);
+      const b = parseInt(slashMatch[2]!);
+
+      if (a > 12) forceDDMM = true; // first position can't be a month
+      if (b > 12) forceMMDD = true; // second position can't be a month
+    }
+  }
+
+  if (allIso && !hasSlashDates) return "YYYY-MM-DD";
+  if (forceDDMM && !forceMMDD) return "DD/MM/YYYY";
+  if (forceMMDD && !forceDDMM) return "MM/DD/YYYY";
+  // Conflicting or fully ambiguous — default to DD/MM/YYYY (UK locale)
+  if (hasSlashDates) return "DD/MM/YYYY";
+  return "YYYY-MM-DD";
+}
+
 function normaliseDate(raw: string | null, format: DateFormat): string | null {
   if (!raw || !raw.trim()) return null;
   const s = raw.trim();
 
-  if (format === "YYYY-MM-DD" || format === "auto") {
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      const d = new Date(s);
-      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    }
+  // ISO format — always try regardless of format setting
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
 
   const slashMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
   if (slashMatch) {
     const [, a, b, year] = slashMatch;
-    const aNum = parseInt(a!);
-    const bNum = parseInt(b!);
 
-    if (format === "DD/MM/YYYY" || (format === "auto" && aNum > 12)) {
+    if (format === "DD/MM/YYYY") {
       const d = new Date(
         `${year}-${b!.padStart(2, "0")}-${a!.padStart(2, "0")}`
       );
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
     }
 
-    if (format === "MM/DD/YYYY" || format === "auto") {
+    if (format === "MM/DD/YYYY") {
       const d = new Date(
         `${year}-${a!.padStart(2, "0")}-${b!.padStart(2, "0")}`
+      );
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+
+    // auto: should not normally reach here if detectDateFormat was called,
+    // but fall back to DD/MM/YYYY for safety
+    if (format === "auto") {
+      const d = new Date(
+        `${year}-${b!.padStart(2, "0")}-${a!.padStart(2, "0")}`
       );
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
     }
@@ -311,6 +359,18 @@ export default function ImportPage() {
     if (ratingIdx >= 0) {
       const allRatings = rawRows.map((r) => r[ratingIdx] ?? null);
       setRatingScale(detectRatingScale(allRatings));
+    }
+
+    // Auto-detect date format from all dates in the column
+    const startedIdx = fieldMap.started_at ?? -1;
+    const finishedIdx = fieldMap.finished_at ?? -1;
+    if (startedIdx >= 0 || finishedIdx >= 0) {
+      const allDates: (string | null)[] = [];
+      for (const row of rawRows) {
+        if (startedIdx >= 0) allDates.push(row[startedIdx]?.trim() || null);
+        if (finishedIdx >= 0) allDates.push(row[finishedIdx]?.trim() || null);
+      }
+      setDateFormat(detectDateFormat(allDates));
     }
 
     // Build initial status map from unique CSV values
@@ -1150,22 +1210,24 @@ function ValidateStep({
       {/* Date validation */}
       {hasDates && (
         <div className="mb-6 rounded-(--radius-card) border border-border p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold">Dates</h3>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-text-muted">Format:</span>
+          <div className="mb-3">
+            <h3 className="mb-2 font-semibold">Dates</h3>
+            <div className="flex items-center gap-3 rounded border border-accent/30 bg-accent/5 px-3 py-2">
+              <label className="text-sm font-medium">Date format:</label>
               <select
                 value={dateFormat}
                 onChange={(e) =>
                   onDateFormatChange(e.target.value as DateFormat)
                 }
-                className="cursor-pointer rounded border border-accent bg-accent/5 px-2 py-1 font-serif text-sm outline-none"
+                className="cursor-pointer rounded border border-accent bg-white px-3 py-1.5 font-serif text-sm font-semibold outline-none"
               >
-                <option value="auto">Auto-detect</option>
                 <option value="YYYY-MM-DD">YYYY-MM-DD</option>
                 <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                 <option value="MM/DD/YYYY">MM/DD/YYYY</option>
               </select>
+              <span className="text-xs text-text-muted">
+                Auto-detected from your data. Change if the preview below looks wrong.
+              </span>
             </div>
           </div>
           <table className="w-full text-sm">
