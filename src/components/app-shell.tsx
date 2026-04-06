@@ -156,7 +156,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 alt=""
                 width={22}
                 height={22}
-                className="h-[22px] w-[22px]"
+                className="h-[22px] w-auto"
               />
               <span className="text-[10px] font-semibold">{item.label}</span>
             </Link>
