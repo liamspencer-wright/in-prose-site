@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import UserAvatar from "@/components/user-avatar";
 
 type UsernameStatus =
   | "idle"
@@ -380,7 +381,7 @@ export default function ProfileSetupPage() {
         </div>
       </div>
 
-      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+      <div className="w-full max-w-sm rounded-(--radius-card) border border-border-subtle bg-bg-medium p-8 shadow-[0_4px_24px_rgba(0,0,0,0.06)] max-sm:p-5">
         {step === 1 ? (
           <>
             <h1 className="mb-2 text-center text-3xl font-bold">
@@ -506,18 +507,11 @@ export default function ProfileSetupPage() {
                   Profile photo
                 </label>
                 <div className="flex items-center gap-4">
-                  {avatarPreview ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={avatarPreview}
-                      alt=""
-                      className="h-20 w-20 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent text-2xl font-bold text-white">
-                      {(displayName || "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar
+                    url={avatarPreview}
+                    name={displayName || null}
+                    size={80}
+                  />
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-
-const ISBNDB_BASE = "https://api2.isbndb.com";
+import { lookupIsbn } from "./shared";
 
 type ImportBook = {
   isbn13: string;
@@ -12,10 +11,6 @@ type ImportBook = {
   review?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
-  /** If set, update this existing user_book_reads row instead of creating a new one */
-  matchedReadId?: string | null;
-  /** If true, the book already exists in the user's library (skip books + user_books insert) */
-  bookInLibrary?: boolean;
 };
 
 type ImportResult = {
@@ -55,170 +50,114 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
+      let processed = 0;
 
-  // Helper: get next read_number for a (user_id, isbn13) pair
-  async function getNextReadNumber(isbn13: string): Promise<number> {
-    const { data } = await supabase
-      .from("user_book_reads")
-      .select("read_number")
-      .eq("user_id", user!.id)
-      .eq("isbn13", isbn13)
-      .order("read_number", { ascending: false })
-      .limit(1);
-    return (data?.[0]?.read_number ?? 0) + 1;
-  }
-
-  // Helper: set active_read_id to the latest read for a book
-  async function setActiveRead(isbn13: string) {
-    const { data: latestRead } = await supabase
-      .from("user_book_reads")
-      .select("id")
-      .eq("user_id", user!.id)
-      .eq("isbn13", isbn13)
-      .order("read_number", { ascending: false })
-      .limit(1);
-
-    if (latestRead?.[0]) {
-      await supabase
-        .from("user_books")
-        .update({ active_read_id: latestRead[0].id })
-        .eq("user_id", user!.id)
-        .eq("isbn13", isbn13);
-    }
-  }
-
-  // ── Process new books/reads ──
-  const affectedIsbns = new Set<string>();
-
-  for (const book of books) {
-    if (!book.isbn13 || typeof book.isbn13 !== "string") {
-      result.skipped++;
-      continue;
-    }
-
-    // Ensure books table row exists (skip if already in library)
-    if (!book.bookInLibrary) {
-      const { error: bookError } = await supabase.from("books").upsert(
-        { isbn13: book.isbn13 },
-        { onConflict: "isbn13", ignoreDuplicates: true }
+      // Bulk upsert books table (ensure isbn13 rows exist)
+      const validBooks = books.filter(
+        (b) => b.isbn13 && typeof b.isbn13 === "string"
       );
+      const skippedBooks = books.length - validBooks.length;
+      result.skipped += skippedBooks;
+      processed += skippedBooks;
 
-      if (bookError) {
-        result.errors.push(`${book.isbn13}: failed to upsert book`);
-        continue;
+      if (validBooks.length > 0) {
+        const { error: bulkBookError } = await supabase.from("books").upsert(
+          validBooks.map((b) => ({ isbn13: b.isbn13 })),
+          { onConflict: "isbn13", ignoreDuplicates: true }
+        );
+
+        if (bulkBookError) {
+          // Fallback: all new books fail
+          for (const b of validBooks) {
+            result.errors.push(`${b.isbn13}: failed to upsert book`);
+          }
+          processed += validBooks.length;
+        } else {
+          // Bulk insert user_books — process in chunks to get per-book errors
+          // Supabase upsert doesn't easily report per-row errors, so we insert
+          // individually but only the user_books link (books row already exists)
+          for (const book of validBooks) {
+            const { error: linkError } = await supabase.from("user_books").insert({
+              user_id: user.id,
+              isbn13: book.isbn13,
+              status: book.status ?? "to_read",
+              ownership: book.ownership ?? "not_owned",
+              visibility: book.visibility ?? "public",
+              rating: book.rating ?? null,
+              review: book.review ?? null,
+              started_at: book.started_at ?? null,
+              finished_at: book.finished_at ?? null,
+            });
+
+            if (linkError) {
+              if (linkError.code === "23505") {
+                result.skipped++;
+              } else {
+                result.errors.push(`${book.isbn13}: ${linkError.message}`);
+              }
+            } else {
+              result.added++;
+            }
+
+            processed++;
+            controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+          }
+        }
       }
 
-      // Ensure user_books ownership row exists
-      const { error: linkError } = await supabase.from("user_books").insert({
-        user_id: user.id,
-        isbn13: book.isbn13,
-        status: book.status ?? "to_read",
-        ownership: book.ownership ?? "not_owned",
-        visibility: book.visibility ?? "public",
-        rating: book.rating ?? null,
-        review: book.review ?? null,
-        started_at: book.started_at ?? null,
-        finished_at: book.finished_at ?? null,
-      });
-
-      if (linkError && linkError.code !== "23505") {
-        result.errors.push(`${book.isbn13}: ${linkError.message}`);
-        continue;
-      }
-    }
-
-    // Create user_book_reads row
-    const readNumber = await getNextReadNumber(book.isbn13);
-    const { error: readError } = await supabase
-      .from("user_book_reads")
-      .insert({
-        user_id: user.id,
-        isbn13: book.isbn13,
-        read_number: readNumber,
-        status: book.status ?? "to_read",
-        rating: book.rating ?? null,
-        review: book.review ?? null,
-        started_at: book.started_at ?? null,
-        finished_at: book.finished_at ?? null,
-      });
-
-    if (readError) {
-      result.errors.push(`${book.isbn13}: ${readError.message}`);
-    } else {
-      result.added++;
-      affectedIsbns.add(book.isbn13);
-    }
-  }
-
-  // ── Process updates (matched reads) ──
-  for (const book of updates) {
-    if (!book.isbn13 || typeof book.isbn13 !== "string") {
-      result.skipped++;
-      continue;
-    }
-
-    if (book.matchedReadId) {
-      // Update specific user_book_reads row
-      const { error: updateError } = await supabase
-        .from("user_book_reads")
-        .update({
-          status: book.status ?? "to_read",
-          rating: book.rating ?? null,
-          review: book.review ?? null,
-          started_at: book.started_at ?? null,
-          finished_at: book.finished_at ?? null,
-        })
-        .eq("id", book.matchedReadId)
-        .eq("user_id", user.id);
-
-      if (updateError) {
-        result.errors.push(`${book.isbn13}: ${updateError.message}`);
-        continue;
+      if (processed > 0 && validBooks.length === 0) {
+        controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
 
-      // Also update ownership/visibility on user_books
-      await supabase
-        .from("user_books")
-        .update({
-          ownership: book.ownership ?? "not_owned",
-          visibility: book.visibility ?? "public",
-        })
-        .eq("user_id", user.id)
-        .eq("isbn13", book.isbn13);
+      // Update existing books (still per-row — each needs a different WHERE)
+      const validUpdates = updates.filter(
+        (b) => b.isbn13 && typeof b.isbn13 === "string"
+      );
+      const skippedUpdates = updates.length - validUpdates.length;
+      result.skipped += skippedUpdates;
+      processed += skippedUpdates;
 
-      result.updated++;
-    } else {
-      // No matched read — fallback to updating user_books directly (legacy)
-      const { error: updateError } = await supabase
-        .from("user_books")
-        .update({
-          status: book.status ?? "to_read",
-          ownership: book.ownership ?? "not_owned",
-          visibility: book.visibility ?? "public",
-          rating: book.rating ?? null,
-          review: book.review ?? null,
-          started_at: book.started_at ?? null,
-          finished_at: book.finished_at ?? null,
-        })
-        .eq("user_id", user.id)
-        .eq("isbn13", book.isbn13);
+      for (const book of validUpdates) {
+        const { error: updateError } = await supabase
+          .from("user_books")
+          .update({
+            status: book.status ?? "to_read",
+            ownership: book.ownership ?? "not_owned",
+            visibility: book.visibility ?? "public",
+            rating: book.rating ?? null,
+            review: book.review ?? null,
+            started_at: book.started_at ?? null,
+            finished_at: book.finished_at ?? null,
+          })
+          .eq("user_id", user.id)
+          .eq("isbn13", book.isbn13);
 
-      if (updateError) {
-        result.errors.push(`${book.isbn13}: ${updateError.message}`);
-        continue;
+        if (updateError) {
+          result.errors.push(`${book.isbn13}: ${updateError.message}`);
+        } else {
+          result.updated++;
+        }
+
+        processed++;
+        controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
 
-      result.updated++;
-    }
-  }
+      // Final result line
+      controller.enqueue(encoder.encode(JSON.stringify({ result }) + "\n"));
+      controller.close();
+    },
+  });
 
-  // Set active_read_id for all affected ISBNs
-  for (const isbn of affectedIsbns) {
-    await setActiveRead(isbn);
-  }
-
-  return NextResponse.json(result);
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson",
+      "Transfer-Encoding": "chunked",
+    },
+  });
 }
 
 /* ── Metadata lookup endpoint ── */
@@ -239,202 +178,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "isbn is required" }, { status: 400 });
   }
 
-  // Check local database first
-  const { data: localBook } = await supabase
-    .from("books")
-    .select("isbn13, title, image, publisher, date_published, pages, synopsis")
-    .eq("isbn13", isbn)
-    .maybeSingle();
-
-  if (localBook?.title) {
-    // Get authors
-    const { data: authorRows } = await supabase
-      .from("book_authors")
-      .select("authors(name)")
-      .eq("isbn13", isbn)
-      .order("ord", { ascending: true });
-
-    const authors = (authorRows ?? [])
-      .map((r: Record<string, unknown>) => {
-        const a = r.authors as { name: string } | null;
-        return a?.name;
-      })
-      .filter(Boolean) as string[];
-
-    return NextResponse.json({
-      isbn13: localBook.isbn13,
-      title: localBook.title,
-      authors,
-      coverUrl: localBook.image,
-      pubYear: localBook.date_published
-        ? parseInt(localBook.date_published.slice(0, 4)) || null
-        : null,
-      publisher: localBook.publisher,
-      pages: localBook.pages,
-      synopsis: localBook.synopsis,
-    });
-  }
-
-  // Fallback to ISBNdb
-  const apiKey = process.env.ISBNDB_API_KEY;
-  if (apiKey) {
-    const meta = await fetchISBNdb(isbn, apiKey);
-    if (meta) {
-      // Upsert into books table for caching
-      await supabase.from("books").upsert(
-        {
-          isbn13: meta.isbn13,
-          title: meta.title,
-          publisher: meta.publisher,
-          image: meta.coverUrl,
-          pages: meta.pages,
-          date_published: meta.pubYear ? String(meta.pubYear) : null,
-          synopsis: meta.synopsis,
-        },
-        { onConflict: "isbn13", ignoreDuplicates: true }
-      );
-
-      // Link authors
-      for (let i = 0; i < meta.authors.length; i++) {
-        const name = meta.authors[i]?.trim();
-        if (!name) continue;
-        await supabase.rpc("upsert_author_and_link", {
-          isbn13_in: meta.isbn13,
-          author_name_in: name,
-          sort_name_in: null,
-          ord_in: i + 1,
-        });
-      }
-
-      return NextResponse.json(meta);
-    }
-  }
-
-  // Fallback to Open Library
-  const olMeta = await fetchOpenLibrary(isbn);
-  if (olMeta) {
-    await supabase.from("books").upsert(
-      {
-        isbn13: olMeta.isbn13,
-        title: olMeta.title,
-        publisher: olMeta.publisher,
-        image: olMeta.coverUrl,
-        pages: olMeta.pages,
-        date_published: olMeta.pubYear ? String(olMeta.pubYear) : null,
-      },
-      { onConflict: "isbn13", ignoreDuplicates: true }
-    );
-
-    for (let i = 0; i < olMeta.authors.length; i++) {
-      const name = olMeta.authors[i]?.trim();
-      if (!name) continue;
-      await supabase.rpc("upsert_author_and_link", {
-        isbn13_in: olMeta.isbn13,
-        author_name_in: name,
-        sort_name_in: null,
-        ord_in: i + 1,
-      });
-    }
-
-    return NextResponse.json(olMeta);
-  }
-
-  return NextResponse.json(null);
+  const meta = await lookupIsbn(isbn, supabase);
+  return NextResponse.json(meta);
 }
 
-type BookMeta = {
-  isbn13: string;
-  title: string;
-  authors: string[];
-  coverUrl: string | null;
-  pubYear: number | null;
-  publisher: string | null;
-  pages: number | null;
-  synopsis: string | null;
-};
-
-async function fetchISBNdb(
-  isbn: string,
-  apiKey: string
-): Promise<BookMeta | null> {
-  try {
-    const res = await fetch(`${ISBNDB_BASE}/book/${isbn}`, {
-      headers: { Authorization: apiKey, "x-api-key": apiKey },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const book = data.book;
-    if (!book) return null;
-
-    const datePublished = book.date_published as string | undefined;
-    return {
-      isbn13: book.isbn13 ?? isbn,
-      title: book.title ?? "Untitled",
-      authors: book.authors ?? [],
-      coverUrl:
-        book.image && book.image.length > 0
-          ? book.image
-          : `https://images.isbndb.com/covers/${isbn}.jpg`,
-      pubYear: datePublished
-        ? parseInt(datePublished.slice(0, 4)) || null
-        : null,
-      publisher: book.publisher ?? null,
-      pages: typeof book.pages === "number" ? book.pages : null,
-      synopsis: book.synopsis ?? null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function fetchOpenLibrary(isbn: string): Promise<BookMeta | null> {
-  try {
-    const res = await fetch(
-      `https://openlibrary.org/isbn/${isbn}.json`,
-      { signal: AbortSignal.timeout(8000) }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    const title = data.title ?? "Untitled";
-    const pages = typeof data.number_of_pages === "number" ? data.number_of_pages : null;
-    const pubDate = data.publish_date as string | undefined;
-    const pubYear = pubDate ? parseInt(pubDate.slice(-4)) || null : null;
-    const publishers = data.publishers as string[] | undefined;
-    const coverId = data.covers?.[0];
-    const coverUrl = coverId
-      ? `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`
-      : null;
-
-    // Fetch authors
-    const authorKeys: { key: string }[] = data.authors ?? [];
-    const authors: string[] = [];
-    for (const ak of authorKeys.slice(0, 5)) {
-      try {
-        const aRes = await fetch(`https://openlibrary.org${ak.key}.json`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        if (aRes.ok) {
-          const aData = await aRes.json();
-          if (aData.name) authors.push(aData.name);
-        }
-      } catch {
-        // skip
-      }
-    }
-
-    return {
-      isbn13: isbn,
-      title,
-      authors,
-      coverUrl,
-      pubYear,
-      publisher: publishers?.[0] ?? null,
-      pages,
-      synopsis: null,
-    };
-  } catch {
-    return null;
-  }
-}

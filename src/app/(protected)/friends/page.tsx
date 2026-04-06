@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import Link from "next/link";
+import UserAvatar from "@/components/user-avatar";
 
 type Tab = "feed" | "friends" | "find";
 
@@ -19,6 +20,7 @@ type FriendProfile = {
   id: string;
   display_name: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   username: string | null;
 };
 
@@ -28,6 +30,7 @@ type FriendRequest = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   direction: "incoming" | "outgoing";
 };
 
@@ -36,6 +39,7 @@ type SearchResult = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   friendship_status: string | null; // null, "pending", "accepted"
 };
 
@@ -44,6 +48,7 @@ type FriendSuggestion = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   mutual_friends: number;
   shared_books: number;
   reason: string | null;
@@ -55,6 +60,7 @@ type ActivityItem = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   book_isbn13: string | null;
   book_title: string | null;
   book_image: string | null;
@@ -97,35 +103,6 @@ type ActivityComment = {
 
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
 
-// ── Avatar helper ─────────────────────────────────────────────
-
-function Avatar({
-  url,
-  name,
-  size = 80,
-}: {
-  url: string | null;
-  name: string | null;
-  size?: number;
-}) {
-  const initial = (name ?? "?").charAt(0).toUpperCase();
-  return url ? (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src={url}
-      alt=""
-      style={{ width: size, height: size }}
-      className="rounded-full object-cover"
-    />
-  ) : (
-    <div
-      style={{ width: size, height: size }}
-      className="flex items-center justify-center rounded-full bg-accent text-xl font-bold text-white"
-    >
-      {initial}
-    </div>
-  );
-}
 
 // ── Relative time formatting ──────────────────────────────────
 
@@ -578,7 +555,7 @@ function ActivityCard({
           {/* User info */}
           <div className="mb-2 flex items-center gap-2">
             <Link href={`/friends/${item.user_id}`} className="flex-shrink-0">
-              <Avatar url={item.avatar_url} name={item.display_name} size={32} />
+              <UserAvatar url={item.avatar_url} name={item.display_name} size={32} badgeType={item.badge_type} />
             </Link>
             <div className="min-w-0">
               <Link
@@ -704,7 +681,7 @@ function ActivityCard({
             <div className="mb-3 space-y-3">
               {comments.map((c) => (
                 <div key={c.id} className="flex gap-2">
-                  <Avatar
+                  <UserAvatar
                     url={c.author_avatar_url}
                     name={c.author_display_name}
                     size={28}
@@ -782,7 +759,7 @@ function FriendsTab() {
     const { data: rows } = await supabase
       .from("friendships")
       .select(
-        "id, requester_id, addressee_id, status, requester_profile:profiles!friendships_requester_id_fkey(id, display_name, avatar_url, username), addressee_profile:profiles!friendships_addressee_id_fkey(id, display_name, avatar_url, username)"
+        "id, requester_id, addressee_id, status, requester_profile:profiles!friendships_requester_id_fkey(id, display_name, avatar_url, badge_type, username), addressee_profile:profiles!friendships_addressee_id_fkey(id, display_name, avatar_url, badge_type, username)"
       )
       .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
 
@@ -810,6 +787,7 @@ function FriendsTab() {
           id: otherId,
           display_name: otherProfile?.display_name ?? null,
           avatar_url: otherProfile?.avatar_url ?? null,
+          badge_type: otherProfile?.badge_type ?? null,
           username: otherProfile?.username ?? null,
         });
       } else if (row.status === "pending") {
@@ -820,6 +798,7 @@ function FriendsTab() {
           display_name: otherProfile?.display_name ?? null,
           username: otherProfile?.username ?? null,
           avatar_url: otherProfile?.avatar_url ?? null,
+          badge_type: otherProfile?.badge_type ?? null,
           direction: isRequester ? "outgoing" : "incoming",
         });
       }
@@ -931,10 +910,11 @@ function FriendsTab() {
                 href={`/friends/${friend.id}`}
                 className="flex flex-col items-center gap-2 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 transition-colors hover:border-accent"
               >
-                <Avatar
+                <UserAvatar
                   url={friend.avatar_url}
                   name={friend.display_name}
                   size={80}
+                  badgeType={friend.badge_type}
                 />
                 <span className="line-clamp-2 text-center text-sm font-semibold">
                   {friend.display_name ?? "Friend"}
@@ -1107,7 +1087,7 @@ function FriendRequestsModal({
           <div className="mb-4 space-y-3">
             {incoming.map((req) => (
               <div key={req.friendship_id} className="flex items-center gap-3">
-                <Avatar url={req.avatar_url} name={req.display_name} size={44} />
+                <UserAvatar url={req.avatar_url} name={req.display_name} size={44} badgeType={req.badge_type} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">
                     {req.display_name ?? "User"}
@@ -1145,7 +1125,7 @@ function FriendRequestsModal({
           <div className="space-y-3">
             {outgoing.map((req) => (
               <div key={req.friendship_id} className="flex items-center gap-3">
-                <Avatar url={req.avatar_url} name={req.display_name} size={44} />
+                <UserAvatar url={req.avatar_url} name={req.display_name} size={44} badgeType={req.badge_type} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">
                     {req.display_name ?? "User"}
@@ -1523,7 +1503,7 @@ function FindTab() {
                 key={r.user_id}
                 className="flex items-center gap-3 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-3"
               >
-                <Avatar url={r.avatar_url} name={r.display_name} size={40} />
+                <UserAvatar url={r.avatar_url} name={r.display_name} size={40} badgeType={r.badge_type} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">
                     {r.display_name ?? "User"}
@@ -1556,7 +1536,7 @@ function FindTab() {
                   key={s.user_id}
                   className="flex items-center gap-3 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-3"
                 >
-                  <Avatar url={s.avatar_url} name={s.display_name} size={40} />
+                  <UserAvatar url={s.avatar_url} name={s.display_name} size={40} badgeType={s.badge_type} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">
                       {s.display_name ?? "User"}

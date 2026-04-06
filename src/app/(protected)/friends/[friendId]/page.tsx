@@ -5,12 +5,14 @@ import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import UserAvatar from "@/components/user-avatar";
 
 type Profile = {
   id: string;
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   description: string | null;
   created_at: string | null;
 };
@@ -36,6 +38,7 @@ type ActivityItem = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   book_isbn13: string | null;
   book_title: string | null;
   book_image: string | null;
@@ -105,33 +108,6 @@ function friendlyStatus(status: string | null): string {
   return STATUS_LABELS[status] ?? status;
 }
 
-function Avatar({
-  url,
-  name,
-  size = 80,
-}: {
-  url: string | null;
-  name: string | null;
-  size?: number;
-}) {
-  const initial = (name ?? "?").charAt(0).toUpperCase();
-  return url ? (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src={url}
-      alt=""
-      style={{ width: size, height: size }}
-      className="rounded-full object-cover"
-    />
-  ) : (
-    <div
-      style={{ width: size, height: size }}
-      className="flex items-center justify-center rounded-full bg-accent text-2xl font-bold text-white"
-    >
-      {initial}
-    </div>
-  );
-}
 
 function relativeTime(dateStr: string): string {
   const diffMs = Date.now() - new Date(dateStr).getTime();
@@ -193,7 +169,7 @@ export default function FriendProfilePage() {
 
     const { data: profileData } = await supabase
       .from("profiles")
-      .select("id, display_name, username, avatar_url, description, created_at")
+      .select("id, display_name, username, avatar_url, badge_type, description, created_at")
       .eq("id", friendId)
       .maybeSingle();
 
@@ -471,10 +447,12 @@ export default function FriendProfilePage() {
 
       {/* Profile header */}
       <div className="mb-6 flex flex-col items-center text-center">
-        <Avatar
+        <UserAvatar
           url={profile.avatar_url}
           name={profile.display_name}
           size={80}
+          badgeType={profile.badge_type}
+          showTextBadge
         />
         <h1 className="mt-3 text-2xl font-bold">
           {profile.display_name ?? "User"}
@@ -870,10 +848,11 @@ function ProfileActivityCard({
 
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex items-center gap-2">
-            <Avatar
+            <UserAvatar
               url={item.avatar_url}
               name={item.display_name}
               size={32}
+              badgeType={item.badge_type}
             />
             <div className="min-w-0">
               <span className="text-sm font-semibold">
@@ -992,7 +971,7 @@ function ProfileActivityCard({
             <div className="mb-3 space-y-3">
               {comments.map((c) => (
                 <div key={c.id} className="flex gap-2">
-                  <Avatar
+                  <UserAvatar
                     url={c.author_avatar_url}
                     name={c.author_display_name}
                     size={28}

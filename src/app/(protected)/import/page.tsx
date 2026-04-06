@@ -31,10 +31,6 @@ type ImportRow = {
   metaStatus: "pending" | "loading" | "found" | "not_found";
   selected: boolean;
   isDuplicate: boolean;
-  /** ID of matched user_book_reads row (for updating an existing read) */
-  matchedReadId?: string;
-  /** True if the book ISBN already exists in the user's library */
-  bookInLibrary?: boolean;
   // Editable fields
   status: string;
   ownership: string;
@@ -43,16 +39,6 @@ type ImportRow = {
   review: string | null;
   started_at: string | null;
   finished_at: string | null;
-};
-
-type ExistingRead = {
-  id: string;
-  read_number: number;
-  status: string | null;
-  started_at: string | null;
-  finished_at: string | null;
-  rating: number | null;
-  review: string | null;
 };
 
 type ExistingBook = {
@@ -67,7 +53,6 @@ type ExistingBook = {
   visibility: string | null;
   cover_url: string | null;
   first_author_name: string | null;
-  reads?: ExistingRead[];
 };
 
 type Step =
@@ -78,6 +63,7 @@ type Step =
   | "review-ready"
   | "review-library"
   | "review-notfound"
+  | "importing"
   | "done";
 
 type ImportResult = {
@@ -189,33 +175,81 @@ function detectRatingScale(ratings: (string | null)[]): RatingScale {
 
 /* ── Date normalisation ── */
 
+/**
+ * Scan all date strings in a column and determine the most likely format.
+ * If any date has its first number > 12, the column must be DD/MM/YYYY.
+ * If any date has its second number > 12, the column must be MM/DD/YYYY.
+ * If all values are YYYY-MM-DD, return that.
+ * Otherwise default to DD/MM/YYYY (UK locale).
+ */
+function detectDateFormat(dates: (string | null)[]): DateFormat {
+  let hasSlashDates = false;
+  let allIso = true;
+  let forceDDMM = false;
+  let forceMMDD = false;
+
+  for (const raw of dates) {
+    if (!raw || !raw.trim()) continue;
+    const s = raw.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      continue; // ISO format
+    }
+
+    allIso = false;
+
+    const slashMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
+    if (slashMatch) {
+      hasSlashDates = true;
+      const a = parseInt(slashMatch[1]!);
+      const b = parseInt(slashMatch[2]!);
+
+      if (a > 12) forceDDMM = true; // first position can't be a month
+      if (b > 12) forceMMDD = true; // second position can't be a month
+    }
+  }
+
+  if (allIso && !hasSlashDates) return "YYYY-MM-DD";
+  if (forceDDMM && !forceMMDD) return "DD/MM/YYYY";
+  if (forceMMDD && !forceDDMM) return "MM/DD/YYYY";
+  // Conflicting or fully ambiguous — default to DD/MM/YYYY (UK locale)
+  if (hasSlashDates) return "DD/MM/YYYY";
+  return "YYYY-MM-DD";
+}
+
 function normaliseDate(raw: string | null, format: DateFormat): string | null {
   if (!raw || !raw.trim()) return null;
   const s = raw.trim();
 
-  if (format === "YYYY-MM-DD" || format === "auto") {
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-      const d = new Date(s);
-      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-    }
+  // ISO format — always try regardless of format setting
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
 
   const slashMatch = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/);
   if (slashMatch) {
     const [, a, b, year] = slashMatch;
-    const aNum = parseInt(a!);
-    const bNum = parseInt(b!);
 
-    if (format === "DD/MM/YYYY" || (format === "auto" && aNum > 12)) {
+    if (format === "DD/MM/YYYY") {
       const d = new Date(
         `${year}-${b!.padStart(2, "0")}-${a!.padStart(2, "0")}`
       );
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
     }
 
-    if (format === "MM/DD/YYYY" || format === "auto") {
+    if (format === "MM/DD/YYYY") {
       const d = new Date(
         `${year}-${a!.padStart(2, "0")}-${b!.padStart(2, "0")}`
+      );
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+
+    // auto: should not normally reach here if detectDateFormat was called,
+    // but fall back to DD/MM/YYYY for safety
+    if (format === "auto") {
+      const d = new Date(
+        `${year}-${b!.padStart(2, "0")}-${a!.padStart(2, "0")}`
       );
       if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
     }
@@ -238,81 +272,6 @@ function cleanIsbn(raw: string | null): string | null {
   return null;
 }
 
-/* ── Re-read matching ── */
-
-/**
- * Match CSV rows to existing user_book_reads by finished_at (+/-1 day),
- * falling back to started_at. Mutates rows in place, setting isDuplicate,
- * matchedReadId, and bookInLibrary.
- */
-function matchReads(rows: ImportRow[], existingMap: Map<string, ExistingBook>) {
-  // Group CSV rows by ISBN
-  const groups = new Map<string, ImportRow[]>();
-  for (const row of rows) {
-    const group = groups.get(row.isbn13) ?? [];
-    group.push(row);
-    groups.set(row.isbn13, group);
-  }
-
-  for (const [isbn, csvRows] of groups) {
-    const existing = existingMap.get(isbn);
-    if (!existing) continue; // new book — no matching needed
-
-    const reads = existing.reads ?? [];
-    const usedReadIds = new Set<string>();
-
-    // Mark all rows for this ISBN as bookInLibrary
-    for (const row of csvRows) {
-      row.bookInLibrary = true;
-    }
-
-    // Match by finished_at first, then started_at
-    for (const csvRow of csvRows) {
-      let matched: ExistingRead | null = null;
-
-      // Try matching by finished_at (+/-1 day)
-      if (csvRow.finished_at) {
-        matched = findMatchingRead(reads, usedReadIds, csvRow.finished_at, "finished_at")
-          ?? findMatchingRead(reads, usedReadIds, csvRow.finished_at, "started_at");
-      }
-
-      // Fallback: match by started_at (+/-1 day)
-      if (!matched && csvRow.started_at) {
-        matched = findMatchingRead(reads, usedReadIds, csvRow.started_at, "started_at")
-          ?? findMatchingRead(reads, usedReadIds, csvRow.started_at, "finished_at");
-      }
-
-      if (matched) {
-        csvRow.isDuplicate = true;
-        csvRow.matchedReadId = matched.id;
-        usedReadIds.add(matched.id);
-      }
-    }
-  }
-}
-
-/** Find a read whose `field` date is within 1 day of `csvDate`. */
-function findMatchingRead(
-  reads: ExistingRead[],
-  usedIds: Set<string>,
-  csvDate: string,
-  field: "started_at" | "finished_at"
-): ExistingRead | null {
-  const csvTime = new Date(csvDate).getTime();
-  if (isNaN(csvTime)) return null;
-  const ONE_DAY = 86400000;
-
-  for (const read of reads) {
-    if (usedIds.has(read.id)) continue;
-    const readDate = read[field];
-    if (!readDate) continue;
-    const readTime = new Date(readDate).getTime();
-    if (isNaN(readTime)) continue;
-    if (Math.abs(csvTime - readTime) <= ONE_DAY) return read;
-  }
-  return null;
-}
-
 /* ── Component ── */
 
 export default function ImportPage() {
@@ -329,11 +288,59 @@ export default function ImportPage() {
     Map<string, ExistingBook>
   >(new Map());
   const [fetchProgress, setFetchProgress] = useState({ done: 0, total: 0 });
+  const [fetchStartTime, setFetchStartTime] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
+  const [importStartTime, setImportStartTime] = useState<number | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef(false);
+
+  /* ── Bulk edit helpers ── */
+
+  const toggleChecked = useCallback((id: number) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const toggleAllChecked = useCallback((ids: number[]) => {
+    setCheckedIds((prev) => {
+      const allChecked = ids.every((id) => prev.has(id));
+      if (allChecked) return new Set();
+      return new Set(ids);
+    });
+  }, []);
+
+  const bulkUpdate = useCallback(
+    (fields: { status?: string; ownership?: string; visibility?: string }) => {
+      setRows((prev) =>
+        prev.map((r) => {
+          if (!checkedIds.has(r.id)) return r;
+          const updated = { ...r };
+          if (fields.status !== undefined) {
+            updated.status = fields.status;
+            // Clear dates if setting to to_read
+            if (fields.status === "to_read") {
+              updated.started_at = null;
+              updated.finished_at = null;
+            }
+          }
+          if (fields.ownership !== undefined)
+            updated.ownership = fields.ownership;
+          if (fields.visibility !== undefined)
+            updated.visibility = fields.visibility;
+          return updated;
+        })
+      );
+    },
+    [checkedIds]
+  );
 
   /* ── Upload step ── */
 
@@ -401,6 +408,18 @@ export default function ImportPage() {
     if (ratingIdx >= 0) {
       const allRatings = rawRows.map((r) => r[ratingIdx] ?? null);
       setRatingScale(detectRatingScale(allRatings));
+    }
+
+    // Auto-detect date format from all dates in the column
+    const startedIdx = fieldMap.started_at ?? -1;
+    const finishedIdx = fieldMap.finished_at ?? -1;
+    if (startedIdx >= 0 || finishedIdx >= 0) {
+      const allDates: (string | null)[] = [];
+      for (const row of rawRows) {
+        if (startedIdx >= 0) allDates.push(row[startedIdx]?.trim() || null);
+        if (finishedIdx >= 0) allDates.push(row[finishedIdx]?.trim() || null);
+      }
+      setDateFormat(detectDateFormat(allDates));
     }
 
     // Build initial status map from unique CSV values
@@ -488,10 +507,16 @@ export default function ImportPage() {
       return;
     }
 
-    // Keep all rows (including re-reads of the same ISBN)
-    setRows(parsed);
+    const seen = new Set<string>();
+    const deduped = parsed.filter((r) => {
+      if (seen.has(r.isbn13)) return false;
+      seen.add(r.isbn13);
+      return true;
+    });
+
+    setRows(deduped);
     setStep("fetching");
-    fetchMetadata(parsed);
+    fetchMetadata(deduped);
   }, [fieldMap, rawRows, ratingScale, dateFormat, statusMap]);
 
   /* ── Metadata fetch ── */
@@ -499,8 +524,9 @@ export default function ImportPage() {
   const fetchMetadata = useCallback(async (importRows: ImportRow[]) => {
     abortRef.current = false;
     setFetchProgress({ done: 0, total: importRows.length });
+    setFetchStartTime(null);
 
-    // Fetch existing library ISBNs + their data (including user_book_reads)
+    // Fetch existing library ISBNs + their data
     const existingMap = new Map<string, ExistingBook>();
     try {
       const res = await fetch("/api/library/isbns?details=1");
@@ -515,66 +541,135 @@ export default function ImportPage() {
     }
     setExistingBooks(existingMap);
 
-    // Run re-read matching before metadata fetch
-    matchReads(importRows, existingMap);
-
     const updated = [...importRows];
+    const allIsbns = updated.map((r) => r.isbn13);
+    const batchStartTime = Date.now();
+    setFetchStartTime(batchStartTime);
 
-    // Deduplicate ISBNs for metadata lookup (one API call per unique ISBN)
-    const uniqueIsbns = [...new Set(updated.map((r) => r.isbn13))];
-    const metaCache = new Map<string, BookMeta | null>();
-
-    for (let i = 0; i < uniqueIsbns.length; i += 5) {
-      if (abortRef.current) break;
-
-      const batch = uniqueIsbns.slice(i, i + 5);
-      await Promise.all(
-        batch.map(async (isbn) => {
-          try {
-            const res = await fetch(
-              `/api/import?isbn=${encodeURIComponent(isbn)}`
-            );
-            if (res.ok) {
-              const meta: BookMeta | null = await res.json();
-              metaCache.set(isbn, meta);
-            } else {
-              metaCache.set(isbn, null);
-            }
-          } catch {
-            metaCache.set(isbn, null);
-          }
-        })
-      );
-
-      // Apply cached meta to all rows with these ISBNs
-      for (const isbn of batch) {
-        const meta = metaCache.get(isbn) ?? null;
-        for (let j = 0; j < updated.length; j++) {
-          if (updated[j].isbn13 !== isbn) continue;
-          if (updated[j].metaStatus === "found") continue; // already resolved
-          updated[j] = {
-            ...updated[j],
-            meta,
-            metaStatus: meta ? "found" : "not_found",
-            // isDuplicate was already set by matchReads — preserve it
-            selected: meta ? !updated[j].isDuplicate : false,
-          };
+    // Step 1: Batch DB lookup — single request for all ISBNs
+    let dbFoundMap = new Map<string, BookMeta>();
+    let needsExternal: string[] = allIsbns;
+    try {
+      const batchRes = await fetch("/api/import/batch-meta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isbns: allIsbns }),
+      });
+      if (batchRes.ok) {
+        const batchData = await batchRes.json();
+        for (const meta of batchData.found ?? []) {
+          dbFoundMap.set(meta.isbn13, meta);
         }
+        needsExternal = batchData.notFound ?? [];
       }
+    } catch {
+      // Fall through — all ISBNs will go to external lookup
+    }
 
+    // Apply DB-found results immediately
+    let progressDone = 0;
+    for (let i = 0; i < updated.length; i++) {
+      const meta = dbFoundMap.get(updated[i].isbn13);
+      if (meta) {
+        const isDuplicate = existingMap.has(updated[i].isbn13);
+        updated[i] = {
+          ...updated[i],
+          meta,
+          metaStatus: "found",
+          isDuplicate,
+          selected: !isDuplicate,
+        };
+        progressDone++;
+      }
+    }
+    setRows([...updated]);
+    setFetchProgress({ done: progressDone, total: updated.length });
+
+    // Step 2: Stream external lookups for remaining ISBNs
+    if (needsExternal.length > 0 && !abortRef.current) {
+      // Mark remaining as loading
+      for (const isbn of needsExternal) {
+        const idx = updated.findIndex((r) => r.isbn13 === isbn);
+        if (idx !== -1) updated[idx] = { ...updated[idx], metaStatus: "loading" };
+      }
       setRows([...updated]);
-      // Count total rows that have been resolved
-      const resolvedCount = updated.filter(
-        (r) => r.metaStatus === "found" || r.metaStatus === "not_found"
-      ).length;
-      setFetchProgress({ done: resolvedCount, total: updated.length });
+
+      try {
+        const streamRes = await fetch("/api/import/stream-meta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isbns: needsExternal }),
+        });
+
+        if (streamRes.ok && streamRes.body) {
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (!abortRef.current) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line);
+                if (event.type === "progress") {
+                  const idx = updated.findIndex((r) => r.isbn13 === event.isbn);
+                  if (idx !== -1) {
+                    const isDuplicate = existingMap.has(event.isbn);
+                    updated[idx] = {
+                      ...updated[idx],
+                      meta: event.result,
+                      metaStatus: event.result ? "found" : "not_found",
+                      isDuplicate,
+                      selected: event.result ? !isDuplicate : false,
+                    };
+                    progressDone++;
+                    setRows([...updated]);
+                    setFetchProgress({ done: progressDone, total: updated.length });
+                  }
+                }
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        } else {
+          // Fallback: mark all remaining as not found
+          for (const isbn of needsExternal) {
+            const idx = updated.findIndex((r) => r.isbn13 === isbn);
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+              progressDone++;
+            }
+          }
+          setRows([...updated]);
+          setFetchProgress({ done: progressDone, total: updated.length });
+        }
+      } catch {
+        // Mark remaining as not found on network error
+        for (const isbn of needsExternal) {
+          const idx = updated.findIndex((r) => r.isbn13 === isbn);
+          if (idx !== -1 && updated[idx].metaStatus === "loading") {
+            updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+            progressDone++;
+          }
+        }
+        setRows([...updated]);
+        setFetchProgress({ done: progressDone, total: updated.length });
+      }
     }
 
     // Determine first review step based on available data
     const hasReady = updated.some(
-      (r) => r.metaStatus === "found" && !r.isDuplicate
+      (r) => r.metaStatus === "found" && !existingMap.has(r.isbn13)
     );
-    const hasDuplicates = updated.some((r) => r.isDuplicate);
+    const hasDuplicates = updated.some((r) => existingMap.has(r.isbn13));
     const hasNotFound = updated.some((r) => r.metaStatus === "not_found");
 
     if (hasReady) setStep("review-ready");
@@ -662,27 +757,35 @@ export default function ImportPage() {
 
     setSubmitting(true);
     setError(null);
+    setImportProgress(null);
+    setImportStartTime(Date.now());
+    setStep("importing");
 
     try {
-      const mapRow = (r: ImportRow) => ({
-        isbn13: r.isbn13,
-        status: r.status,
-        ownership: r.ownership,
-        visibility: r.visibility,
-        rating: r.rating,
-        review: r.review,
-        started_at: r.started_at,
-        finished_at: r.finished_at,
-        matchedReadId: r.matchedReadId ?? null,
-        bookInLibrary: r.bookInLibrary ?? false,
-      });
-
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          books: newBooks.map(mapRow),
-          updates: updates.map(mapRow),
+          books: newBooks.map((r) => ({
+            isbn13: r.isbn13,
+            status: r.status,
+            ownership: r.ownership,
+            visibility: r.visibility,
+            rating: r.rating,
+            review: r.review,
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+          })),
+          updates: updates.map((r) => ({
+            isbn13: r.isbn13,
+            status: r.status,
+            ownership: r.ownership,
+            visibility: r.visibility,
+            rating: r.rating,
+            review: r.review,
+            started_at: r.started_at,
+            finished_at: r.finished_at,
+          })),
         }),
       });
 
@@ -690,16 +793,71 @@ export default function ImportPage() {
         const data = await res.json();
         setError(data.error ?? "Import failed");
         setSubmitting(false);
+        setStep("review-ready");
         return;
       }
 
-      const data: ImportResult = await res.json();
-      setResult(data);
-      setStep("done");
+      // Read NDJSON stream
+      const reader = res.body?.getReader();
+      if (!reader) {
+        const data: ImportResult = await res.json();
+        setResult(data);
+        setStep("done");
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalResult: ImportResult | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.progress !== undefined) {
+              setImportProgress({ done: parsed.progress, total: parsed.total });
+            }
+            if (parsed.result) {
+              finalResult = parsed.result;
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+
+      // Process any remaining buffer
+      if (buffer.trim()) {
+        try {
+          const parsed = JSON.parse(buffer);
+          if (parsed.result) finalResult = parsed.result;
+        } catch {
+          // skip
+        }
+      }
+
+      if (finalResult) {
+        setResult(finalResult);
+        setStep("done");
+      } else {
+        setError("Import completed but no result received.");
+        setStep("review-ready");
+      }
     } catch {
       setError("Network error. Please try again.");
+      setStep("review-ready");
     } finally {
       setSubmitting(false);
+      setImportProgress(null);
+      setImportStartTime(null);
     }
   }, [rows]);
 
@@ -778,7 +936,14 @@ export default function ImportPage() {
       )}
 
       {step === "fetching" && (
-        <FetchingStep progress={fetchProgress} rows={rows} />
+        <FetchingStep progress={fetchProgress} rows={rows} startTime={fetchStartTime} />
+      )}
+
+      {step === "importing" && (
+        <ImportingStep
+          progress={importProgress ?? { done: 0, total: 0 }}
+          startTime={importStartTime}
+        />
       )}
 
       {step === "review-ready" && (
@@ -790,13 +955,17 @@ export default function ImportPage() {
           onUpdate={updateRow}
           onNext={
             nextReviewStep("review-ready")
-              ? () => setStep(nextReviewStep("review-ready")!)
+              ? () => { setCheckedIds(new Set()); setStep(nextReviewStep("review-ready")!); }
               : undefined
           }
           onSubmit={!nextReviewStep("review-ready") ? handleSubmit : undefined}
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -808,12 +977,12 @@ export default function ImportPage() {
           onUpdate={updateRow}
           onNext={
             nextReviewStep("review-library")
-              ? () => setStep(nextReviewStep("review-library")!)
+              ? () => { setCheckedIds(new Set()); setStep(nextReviewStep("review-library")!); }
               : undefined
           }
           onPrev={
             prevReviewStep("review-library")
-              ? () => setStep(prevReviewStep("review-library")!)
+              ? () => { setCheckedIds(new Set()); setStep(prevReviewStep("review-library")!); }
               : undefined
           }
           onSubmit={
@@ -822,6 +991,10 @@ export default function ImportPage() {
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -833,13 +1006,17 @@ export default function ImportPage() {
           onUpdateMeta={updateRowMeta}
           onPrev={
             prevReviewStep("review-notfound")
-              ? () => setStep(prevReviewStep("review-notfound")!)
+              ? () => { setCheckedIds(new Set()); setStep(prevReviewStep("review-notfound")!); }
               : undefined
           }
           onSubmit={handleSubmit}
           submitting={submitting}
           selectedCount={selectedCount}
           onBack={resetAll}
+          checkedIds={checkedIds}
+          onToggleChecked={toggleChecked}
+          onToggleAllChecked={toggleAllChecked}
+          onBulkUpdate={bulkUpdate}
         />
       )}
 
@@ -1015,7 +1192,7 @@ function MappingStep({
               <th className="px-3 py-2 text-left font-semibold">
                 Your CSV column
               </th>
-              <th className="px-3 py-2 text-left font-semibold text-text-muted">
+              <th className="px-3 py-2 text-left font-semibold text-text-muted max-sm:hidden">
                 Sample data
               </th>
             </tr>
@@ -1060,7 +1237,7 @@ function MappingStep({
                       ))}
                     </select>
                   </td>
-                  <td className="px-3 py-2 text-text-muted">
+                  <td className="px-3 py-2 text-text-muted max-sm:hidden">
                     {selectedCol !== null
                       ? sampleRows
                           .slice(0, 2)
@@ -1243,22 +1420,24 @@ function ValidateStep({
       {/* Date validation */}
       {hasDates && (
         <div className="mb-6 rounded-(--radius-card) border border-border p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="font-semibold">Dates</h3>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-text-muted">Format:</span>
+          <div className="mb-3">
+            <h3 className="mb-2 font-semibold">Dates</h3>
+            <div className="flex items-center gap-3 rounded border border-accent/30 bg-accent/5 px-3 py-2">
+              <label className="text-sm font-medium">Date format:</label>
               <select
                 value={dateFormat}
                 onChange={(e) =>
                   onDateFormatChange(e.target.value as DateFormat)
                 }
-                className="cursor-pointer rounded border border-accent bg-accent/5 px-2 py-1 font-serif text-sm outline-none"
+                className="cursor-pointer rounded border border-accent bg-white px-3 py-1.5 font-serif text-sm font-semibold outline-none"
               >
-                <option value="auto">Auto-detect</option>
                 <option value="YYYY-MM-DD">YYYY-MM-DD</option>
                 <option value="DD/MM/YYYY">DD/MM/YYYY</option>
                 <option value="MM/DD/YYYY">MM/DD/YYYY</option>
               </select>
+              <span className="text-xs text-text-muted">
+                Auto-detected from your data. Change if the preview below looks wrong.
+              </span>
             </div>
           </div>
           <table className="w-full text-sm">
@@ -1342,18 +1521,36 @@ function getDateSamples(
 
 /* ── Fetching Step ── */
 
+function formatTimeEstimate(seconds: number): string {
+  if (seconds < 60) return `~${Math.ceil(seconds)}s remaining`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return secs > 0 ? `~${mins}m ${secs}s remaining` : `~${mins}m remaining`;
+}
+
 function FetchingStep({
   progress,
   rows,
+  startTime,
 }: {
   progress: { done: number; total: number };
   rows: ImportRow[];
+  startTime: number | null;
 }) {
   const pct =
     progress.total > 0
       ? Math.round((progress.done / progress.total) * 100)
       : 0;
   const found = rows.filter((r) => r.metaStatus === "found").length;
+
+  const remaining = progress.total - progress.done;
+  const showEstimate = startTime && progress.done >= 5 && remaining > 0;
+  let estimate: string | null = null;
+  if (showEstimate) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avgPerBook = elapsed / progress.done;
+    estimate = formatTimeEstimate(remaining * avgPerBook);
+  }
 
   return (
     <div className="py-8 text-center">
@@ -1368,6 +1565,49 @@ function FetchingStep({
         {progress.done} / {progress.total} books processed
         {found > 0 && ` \u2014 ${found} found`}
       </p>
+      {estimate && (
+        <p className="mt-1 text-xs text-text-muted">{estimate}</p>
+      )}
+    </div>
+  );
+}
+
+function ImportingStep({
+  progress,
+  startTime,
+}: {
+  progress: { done: number; total: number };
+  startTime: number | null;
+}) {
+  const pct =
+    progress.total > 0
+      ? Math.round((progress.done / progress.total) * 100)
+      : 0;
+
+  const remaining = progress.total - progress.done;
+  const showEstimate = startTime && progress.done >= 3 && remaining > 0;
+  let estimate: string | null = null;
+  if (showEstimate) {
+    const elapsed = (Date.now() - startTime) / 1000;
+    const avgPerBook = elapsed / progress.done;
+    estimate = formatTimeEstimate(remaining * avgPerBook);
+  }
+
+  return (
+    <div className="py-8 text-center">
+      <p className="mb-4 text-lg font-semibold">Importing books...</p>
+      <div className="mx-auto mb-4 h-3 w-full max-w-md overflow-hidden rounded-full bg-bg-medium">
+        <div
+          className="h-full rounded-full bg-accent transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <p className="text-sm text-text-muted">
+        {progress.done} / {progress.total} imported
+      </p>
+      {estimate && (
+        <p className="mt-1 text-xs text-text-muted">{estimate}</p>
+      )}
     </div>
   );
 }
@@ -1385,6 +1625,10 @@ function ReviewSection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   title: string;
   subtitle: string;
@@ -1396,8 +1640,10 @@ function ReviewSection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
 
   return (
     <div>
@@ -1414,7 +1660,18 @@ function ReviewSection({
         }
         onToggle={onToggle}
         onUpdate={onUpdate}
+        checkedIds={checkedIds}
+        onToggleChecked={onToggleChecked}
+        onToggleAllChecked={() => onToggleAllChecked(rowIds)}
       />
+
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
 
       <ReviewNav
         onBack={onBack}
@@ -1440,6 +1697,10 @@ function ReviewLibrarySection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   rows: ImportRow[];
   existingBooks: Map<string, ExistingBook>;
@@ -1451,8 +1712,11 @@ function ReviewLibrarySection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
+  const allChecked = rowIds.length > 0 && checkedCount === rowIds.length;
 
   return (
     <div>
@@ -1464,6 +1728,20 @@ function ReviewLibrarySection({
         </p>
       </div>
 
+      {rows.length > 1 && (
+        <div className="mb-2 px-1">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={() => onToggleAllChecked(rowIds)}
+              className="accent-accent"
+            />
+            <span className="font-medium text-text-muted">Select all for bulk edit</span>
+          </label>
+        </div>
+      )}
+
       <div className="mb-6 space-y-3">
         {rows.map((row) => {
           const existing = existingBooks.get(row.isbn13);
@@ -1471,21 +1749,30 @@ function ReviewLibrarySection({
           const authors = row.meta?.authors?.join(", ") ?? "";
           const coverUrl = row.meta?.coverUrl ?? existing?.cover_url;
           const isExpanded = expandedId === row.id;
+          const isChecked = checkedIds.has(row.id);
 
           return (
             <div
               key={row.id}
               className={`rounded-(--radius-card) border transition-colors ${
                 row.selected ? "border-accent" : "border-border"
-              }`}
+              } ${isChecked ? "ring-2 ring-accent/30" : ""}`}
             >
               {/* Header */}
               <div className="flex items-center gap-3 px-4 py-3">
                 <input
                   type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(row.id)}
+                  className="accent-accent"
+                  title="Select for bulk edit"
+                />
+                <input
+                  type="checkbox"
                   checked={row.selected}
                   onChange={() => onToggle(row.id)}
                   className="accent-accent"
+                  title="Include in import"
                 />
                 {coverUrl ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
@@ -1533,6 +1820,14 @@ function ReviewLibrarySection({
           );
         })}
       </div>
+
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
 
       <ReviewNav
         onBack={onBack}
@@ -1599,6 +1894,7 @@ function ComparisonTable({
   ];
 
   return (
+    <div className="overflow-x-auto">
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-border-subtle">
@@ -1718,6 +2014,7 @@ function ComparisonTable({
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
@@ -1733,6 +2030,10 @@ function ReviewNotFoundSection({
   submitting,
   selectedCount,
   onBack,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
+  onBulkUpdate,
 }: {
   rows: ImportRow[];
   onToggle: (id: number) => void;
@@ -1743,12 +2044,16 @@ function ReviewNotFoundSection({
   submitting: boolean;
   selectedCount: number;
   onBack: () => void;
-}) {
+} & BulkEditProps) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [searchingId, setSearchingId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<BookMeta[]>([]);
   const [searching, setSearching] = useState(false);
+
+  const rowIds = rows.map((r) => r.id);
+  const checkedCount = rowIds.filter((id) => checkedIds.has(id)).length;
+  const allChecked = rowIds.length > 0 && checkedCount === rowIds.length;
 
   const handleSearch = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -1781,33 +2086,67 @@ function ReviewNotFoundSection({
         </p>
       </div>
 
+      {rows.length > 1 && (
+        <div className="mb-2 px-1">
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={allChecked}
+              onChange={() => onToggleAllChecked(rowIds)}
+              className="accent-accent"
+            />
+            <span className="font-medium text-text-muted">Select all for bulk edit</span>
+          </label>
+        </div>
+      )}
+
       <div className="mb-6 space-y-3">
         {rows.map((row) => {
           const title = row.meta?.title ?? row.csvTitle ?? row.isbn13;
           const isExpanded = expandedId === row.id;
           const isSearching = searchingId === row.id;
+          const isChecked = checkedIds.has(row.id);
 
           return (
             <div
               key={row.id}
               className={`rounded-(--radius-card) border transition-colors ${
                 row.selected ? "border-border" : "border-border opacity-40"
-              }`}
+              } ${isChecked ? "ring-2 ring-accent/30" : ""}`}
             >
               <div className="flex items-center gap-3 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => onToggleChecked(row.id)}
+                  className="accent-accent"
+                  title="Select for bulk edit"
+                />
                 <input
                   type="checkbox"
                   checked={row.selected}
                   onChange={() => onToggle(row.id)}
                   className="accent-accent"
+                  title="Include in import"
                 />
-                <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-bg-medium text-[8px] text-text-subtle">
-                  ?
-                </div>
+                {row.meta?.coverUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={row.meta.coverUrl}
+                    alt=""
+                    className="h-12 w-8 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-bg-medium text-[8px] text-text-subtle">
+                    ?
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{title}</p>
-                  <p className="text-xs text-text-muted">
-                    ISBN: {row.isbn13}
+                  <p className="truncate text-xs text-text-muted">
+                    {row.meta?.authors?.length
+                      ? row.meta.authors.join(", ")
+                      : `ISBN: ${row.isbn13}`}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -1871,6 +2210,7 @@ function ReviewNotFoundSection({
                             setSearchingId(null);
                             setSearchQuery("");
                             setSearchResults([]);
+                            setExpandedId(row.id);
                           }}
                           className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle px-3 py-2 text-left transition-colors hover:bg-bg-light"
                         >
@@ -1916,6 +2256,14 @@ function ReviewNotFoundSection({
         })}
       </div>
 
+      {checkedCount > 0 && (
+        <BulkEditToolbar
+          checkedCount={checkedCount}
+          onBulkUpdate={onBulkUpdate}
+          onClear={() => onToggleAllChecked([])}
+        />
+      )}
+
       <ReviewNav
         onBack={onBack}
         onPrev={onPrev}
@@ -1935,18 +2283,36 @@ function BookTable({
   onToggleExpand,
   onToggle,
   onUpdate,
+  checkedIds,
+  onToggleChecked,
+  onToggleAllChecked,
 }: {
   rows: ImportRow[];
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
   onToggle: (id: number) => void;
   onUpdate: (id: number, field: string, value: string | number | null) => void;
+  checkedIds: Set<number>;
+  onToggleChecked: (id: number) => void;
+  onToggleAllChecked: () => void;
 }) {
+  const rowIds = rows.map((r) => r.id);
+  const allChecked = rowIds.length > 0 && rowIds.every((id) => checkedIds.has(id));
+
   return (
     <div className="mb-6 overflow-x-auto rounded-(--radius-card) border border-border">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-bg-light">
+            <th className="w-10 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                onChange={onToggleAllChecked}
+                className="accent-accent"
+                title="Select all for bulk edit"
+              />
+            </th>
             <th className="w-10 px-3 py-2.5" />
             <th className="px-3 py-2.5 text-left font-semibold">Book</th>
             <th className="px-3 py-2.5 text-left font-semibold max-sm:hidden">
@@ -1976,6 +2342,8 @@ function BookTable({
                 onToggleExpand={() => onToggleExpand(row.id)}
                 onToggle={() => onToggle(row.id)}
                 onUpdate={(field, value) => onUpdate(row.id, field, value)}
+                isChecked={checkedIds.has(row.id)}
+                onToggleChecked={() => onToggleChecked(row.id)}
               />
             );
           })}
@@ -1994,6 +2362,8 @@ function BookTableRow({
   onToggleExpand,
   onToggle,
   onUpdate,
+  isChecked,
+  onToggleChecked,
 }: {
   row: ImportRow;
   title: string;
@@ -2003,20 +2373,32 @@ function BookTableRow({
   onToggleExpand: () => void;
   onToggle: () => void;
   onUpdate: (field: string, value: string | number | null) => void;
+  isChecked: boolean;
+  onToggleChecked: () => void;
 }) {
   return (
     <>
       <tr
         className={`border-b border-border-subtle transition-colors ${
           !row.selected ? "opacity-40" : ""
-        }`}
+        } ${isChecked ? "bg-accent/5" : ""}`}
       >
+        <td className="px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={onToggleChecked}
+            className="accent-accent"
+            title="Select for bulk edit"
+          />
+        </td>
         <td className="px-3 py-2.5">
           <input
             type="checkbox"
             checked={row.selected}
             onChange={onToggle}
             className="accent-accent"
+            title="Include in import"
           />
         </td>
         <td className="px-3 py-2.5">
@@ -2085,7 +2467,7 @@ function BookTableRow({
 
       {expanded && (
         <tr className="border-b border-border-subtle bg-bg-light/50">
-          <td colSpan={5} className="px-6 py-4">
+          <td colSpan={6} className="px-6 py-4">
             <EditFields row={row} onUpdate={onUpdate} />
           </td>
         </tr>
@@ -2195,6 +2577,118 @@ function EditFields({
             className="w-full rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
           />
         </FieldGroup>
+      </div>
+    </div>
+  );
+}
+
+/* ── Bulk Edit Toolbar ── */
+
+type BulkEditProps = {
+  checkedIds: Set<number>;
+  onToggleChecked: (id: number) => void;
+  onToggleAllChecked: (ids: number[]) => void;
+  onBulkUpdate: (fields: {
+    status?: string;
+    ownership?: string;
+    visibility?: string;
+  }) => void;
+};
+
+function BulkEditToolbar({
+  checkedCount,
+  onBulkUpdate,
+  onClear,
+}: {
+  checkedCount: number;
+  onBulkUpdate: BulkEditProps["onBulkUpdate"];
+  onClear: () => void;
+}) {
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkOwnership, setBulkOwnership] = useState("");
+  const [bulkVisibility, setBulkVisibility] = useState("");
+
+  const handleApply = () => {
+    const fields: {
+      status?: string;
+      ownership?: string;
+      visibility?: string;
+    } = {};
+    if (bulkStatus) fields.status = bulkStatus;
+    if (bulkOwnership) fields.ownership = bulkOwnership;
+    if (bulkVisibility) fields.visibility = bulkVisibility;
+    if (Object.keys(fields).length === 0) return;
+    onBulkUpdate(fields);
+    setBulkStatus("");
+    setBulkOwnership("");
+    setBulkVisibility("");
+  };
+
+  const hasSelection = bulkStatus || bulkOwnership || bulkVisibility;
+
+  return (
+    <div className="sticky bottom-4 z-10 mx-auto max-w-4xl rounded-(--radius-card) border border-accent bg-white px-4 py-3 shadow-lg">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold">
+          {checkedCount} book{checkedCount !== 1 ? "s" : ""} selected
+        </span>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={bulkStatus}
+            onChange={(e) => setBulkStatus(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Status...</option>
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={bulkOwnership}
+            onChange={(e) => setBulkOwnership(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Ownership...</option>
+            {OWNERSHIP_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={bulkVisibility}
+            onChange={(e) => setBulkVisibility(e.target.value)}
+            className="cursor-pointer rounded border border-border bg-bg-light px-2 py-1.5 font-serif text-sm outline-none"
+          >
+            <option value="">Visibility...</option>
+            {VISIBILITY_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleApply}
+            disabled={!hasSelection}
+            className="cursor-pointer rounded-(--radius-input) bg-accent px-4 py-1.5 font-serif text-sm font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
+          >
+            Apply
+          </button>
+          <button
+            onClick={onClear}
+            className="cursor-pointer rounded-(--radius-input) border border-border px-4 py-1.5 font-serif text-sm font-semibold transition-colors hover:bg-bg-medium"
+          >
+            Clear
+          </button>
+        </div>
       </div>
     </div>
   );

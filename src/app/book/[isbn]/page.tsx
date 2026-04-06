@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BookEditWrapper } from "@/components/book-edit-wrapper";
+import UserAvatar from "@/components/user-avatar";
 
 export const revalidate = 300; // 5 minutes
 
@@ -32,6 +33,7 @@ type SharerInfo = {
   display_name: string | null;
   username: string | null;
   avatar_url: string | null;
+  badge_type: string | null;
   rating: number | null;
   review: string | null;
   status: string | null;
@@ -168,18 +170,9 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
       {sharer && (
         <section className="mb-8 rounded-(--radius-card) border border-border-subtle bg-bg-medium p-5">
           <div className="flex items-start gap-3">
-            {sharer.avatar_url ? (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img
-                src={sharer.avatar_url}
-                alt=""
-                className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-              />
-            ) : (
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-accent text-sm font-bold text-white">
-                {(sharer.display_name ?? "?").charAt(0).toUpperCase()}
-              </div>
-            )}
+            <div className="flex-shrink-0">
+              <UserAvatar url={sharer.avatar_url} name={sharer.display_name} size={40} badgeType={sharer.badge_type} />
+            </div>
             <div className="min-w-0 flex-1">
               <p className="font-semibold">
                 {sharer.display_name ?? "A reader"}
@@ -349,7 +342,7 @@ async function fetchSharerInfo(
   // Get sharer's profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, username, avatar_url")
+    .select("display_name, username, avatar_url, badge_type")
     .eq("id", userId)
     .maybeSingle();
 
@@ -359,6 +352,7 @@ async function fetchSharerInfo(
     display_name: profile.display_name,
     username: profile.username,
     avatar_url: profile.avatar_url,
+    badge_type: profile.badge_type,
     rating: userBook.rating as number | null,
     review: userBook.review as string | null,
     status: userBook.status as string | null,

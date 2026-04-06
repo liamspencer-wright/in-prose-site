@@ -235,9 +235,9 @@ function SearchResultCard({
         </div>
       </div>
 
-      {/* Hover preview — synopsis */}
+      {/* Hover preview — synopsis (hidden on mobile, no hover there) */}
       {book.synopsis && (
-        <div className="pointer-events-none absolute top-full right-0 left-0 z-10 mt-1 hidden rounded-(--radius-card) border border-border bg-bg-light p-4 shadow-[0_4px_20px_rgba(0,0,0,0.12)] group-hover:block">
+        <div className="pointer-events-none absolute top-full right-0 left-0 z-10 mt-1 hidden rounded-(--radius-card) border border-border bg-bg-light p-4 shadow-[0_4px_20px_rgba(0,0,0,0.12)] max-sm:!hidden group-hover:block">
           <p className="text-xs font-semibold text-text-subtle">Synopsis</p>
           <p className="mt-1 line-clamp-4 text-sm leading-relaxed text-text-muted">
             {stripHtml(book.synopsis)}

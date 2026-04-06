@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import Link from "next/link";
+import UserAvatar from "@/components/user-avatar";
 
 type ActivityItem = {
   id: string;
@@ -11,6 +12,7 @@ type ActivityItem = {
   display_name: string;
   username: string;
   avatar_url: string | null;
+  badge_type: string | null;
   isbn13: string;
   title: string;
   cover_url: string | null;
@@ -139,18 +141,7 @@ function ActivityCard({ item }: { item: ActivityItem }) {
       {/* User info */}
       <div className="mb-3 flex items-center gap-2">
         <Link href={`/friends/${item.user_id}`}>
-          {item.avatar_url ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              src={item.avatar_url}
-              alt={item.display_name}
-              className="h-8 w-8 rounded-full object-cover"
-            />
-          ) : (
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent/15 text-xs font-bold text-accent">
-              {item.display_name?.[0]?.toUpperCase() ?? "?"}
-            </div>
-          )}
+          <UserAvatar url={item.avatar_url} name={item.display_name} size={32} badgeType={item.badge_type} />
         </Link>
         <div className="flex-1">
           <p className="text-sm">

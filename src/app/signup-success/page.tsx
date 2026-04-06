@@ -7,12 +7,12 @@ export const metadata: Metadata = {
 
 export default function SignupSuccessPage() {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-bg-medium p-8 text-center">
+    <div className="flex min-h-svh flex-col items-center justify-center bg-bg-medium p-8 text-center max-sm:px-4">
       <main>
-        <h1 className="mb-2 text-[2.5rem] font-bold text-accent">
+        <h1 className="mb-2 text-[2.5rem] font-bold text-accent max-sm:text-3xl">
           You&apos;re on the list!
         </h1>
-        <p className="text-xl">
+        <p className="text-xl max-sm:text-lg">
           Thanks for signing up — we&apos;ll be in touch when beta access opens.
         </p>
         <p className="mt-6">
