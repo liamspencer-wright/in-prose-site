@@ -3,6 +3,7 @@ import { Crimson_Text } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
 import { AppShell } from "@/components/app-shell";
 import { CookieConsent } from "@/components/cookie-consent";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -80,6 +81,7 @@ export default function RootLayout({
         <AuthProvider>
           <AppShell>{children}</AppShell>
           <CookieConsent />
+          <PwaInstallBanner />
         </AuthProvider>
       </body>
     </html>
