@@ -381,7 +381,7 @@ export function TargetsTab() {
       {!loading && targets.length > 0 && (
         <button
           onClick={openCreate}
-          className="fixed right-8 bottom-8 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-accent text-white shadow-lg transition-transform hover:scale-105 max-sm:right-5 max-sm:bottom-5"
+          className="fixed right-8 bottom-8 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-accent text-white shadow-lg transition-transform hover:scale-105 max-sm:right-5 max-sm:bottom-20"
           title="New target"
         >
           <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
