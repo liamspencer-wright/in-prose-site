@@ -6,6 +6,7 @@ import { useAuth } from "@/components/auth-provider";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
+import UserAvatar from "@/components/user-avatar";
 
 type BookDetail = {
   isbn13: string;
@@ -663,7 +664,7 @@ function CommunityTab({ book }: { book: BookDetail }) {
             </p>
             <div className="flex justify-center -space-x-3">
               {friendsWhoRead.slice(0, 5).map((f) => (
-                <Avatar
+                <UserAvatar
                   key={f.user_id}
                   url={f.avatar_url}
                   name={f.display_name}
@@ -740,35 +741,6 @@ function CommunityTab({ book }: { book: BookDetail }) {
 
 /* ── Shared Components ── */
 
-function Avatar({
-  url,
-  name,
-  size = 32,
-}: {
-  url: string | null;
-  name: string;
-  size?: number;
-}) {
-  const sizeClass =
-    size <= 32 ? "h-8 w-8" : size <= 40 ? "h-10 w-10" : "h-11 w-11";
-  const textClass = size <= 32 ? "text-xs" : "text-sm";
-
-  return url ? (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src={url}
-      alt={name}
-      className={`${sizeClass} rounded-full object-cover`}
-    />
-  ) : (
-    <div
-      className={`${sizeClass} flex items-center justify-center rounded-full bg-accent/15 ${textClass} font-bold text-accent`}
-    >
-      {name?.[0]?.toUpperCase() ?? "?"}
-    </div>
-  );
-}
-
 function ReviewCard({
   userId,
   displayName,
@@ -793,7 +765,7 @@ function ReviewCard({
     <div className="rounded-(--radius-card) bg-accent-blue p-4">
       <div className="mb-2 flex items-center gap-2">
         <Link href={`/friends/${userId}`}>
-          <Avatar url={avatarUrl} name={displayName} size={40} />
+          <UserAvatar url={avatarUrl} name={displayName} size={40} />
         </Link>
         <div className="flex-1">
           <Link

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import UserAvatar from "@/components/user-avatar";
 
 type UsernameStatus =
   | "idle"
@@ -506,18 +507,11 @@ export default function ProfileSetupPage() {
                   Profile photo
                 </label>
                 <div className="flex items-center gap-4">
-                  {avatarPreview ? (
-                    /* eslint-disable-next-line @next/next/no-img-element */
-                    <img
-                      src={avatarPreview}
-                      alt=""
-                      className="h-20 w-20 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-accent text-2xl font-bold text-white">
-                      {(displayName || "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <UserAvatar
+                    url={avatarPreview}
+                    name={displayName || null}
+                    size={80}
+                  />
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"

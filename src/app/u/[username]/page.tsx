@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
+import UserAvatar from "@/components/user-avatar";
 
 export const revalidate = 60;
 
@@ -58,7 +59,7 @@ export default async function PublicProfilePage({ params }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, display_name, username, avatar_url, description, joined_at")
+    .select("id, display_name, username, avatar_url, badge_type, description, joined_at")
     .ilike("username", username)
     .maybeSingle();
 
@@ -117,18 +118,15 @@ export default async function PublicProfilePage({ params }: Props) {
     <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
       {/* Profile header */}
       <div className="mb-8 flex flex-col items-center text-center">
-        {profile.avatar_url ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={profile.avatar_url}
-            alt=""
-            className="mb-4 h-20 w-20 rounded-full object-cover"
+        <div className="mb-4">
+          <UserAvatar
+            url={profile.avatar_url}
+            name={profile.display_name}
+            size={80}
+            badgeType={profile.badge_type}
+            showTextBadge
           />
-        ) : (
-          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-accent text-2xl font-bold text-white">
-            {(profile.display_name ?? "?").charAt(0).toUpperCase()}
-          </div>
-        )}
+        </div>
         <h1 className="text-2xl font-bold">
           {profile.display_name ?? profile.username}
         </h1>
