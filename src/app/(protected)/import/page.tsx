@@ -2129,13 +2129,24 @@ function ReviewNotFoundSection({
                   className="accent-accent"
                   title="Include in import"
                 />
-                <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-bg-medium text-[8px] text-text-subtle">
-                  ?
-                </div>
+                {row.meta?.coverUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={row.meta.coverUrl}
+                    alt=""
+                    className="h-12 w-8 shrink-0 rounded object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-8 shrink-0 items-center justify-center rounded bg-bg-medium text-[8px] text-text-subtle">
+                    ?
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold">{title}</p>
-                  <p className="text-xs text-text-muted">
-                    ISBN: {row.isbn13}
+                  <p className="truncate text-xs text-text-muted">
+                    {row.meta?.authors?.length
+                      ? row.meta.authors.join(", ")
+                      : `ISBN: ${row.isbn13}`}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -2199,6 +2210,7 @@ function ReviewNotFoundSection({
                             setSearchingId(null);
                             setSearchQuery("");
                             setSearchResults([]);
+                            setExpandedId(row.id);
                           }}
                           className="flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border-subtle px-3 py-2 text-left transition-colors hover:bg-bg-light"
                         >
