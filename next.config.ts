@@ -1,4 +1,10 @@
+import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
+
+const withSerwist = withSerwistInit({
+  swSrc: "src/app/sw.ts",
+  swDest: "public/sw.js",
+});
 
 const nextConfig: NextConfig = {
   images: {
@@ -10,10 +16,14 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
-        hostname: "**",
+        hostname: "images.isbndb.com",
+      },
+      {
+        protocol: "https",
+        hostname: "covers.openlibrary.org",
       },
     ],
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

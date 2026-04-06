@@ -3,6 +3,7 @@ import { Crimson_Text } from "next/font/google";
 import { AuthProvider } from "@/components/auth-provider";
 import { AppShell } from "@/components/app-shell";
 import { CookieConsent } from "@/components/cookie-consent";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -52,6 +53,9 @@ export const metadata: Metadata = {
     images: ["/og-image.png"],
   },
   manifest: "/site.webmanifest",
+  other: {
+    "theme-color": "#fbf1ec",
+  },
   robots: {
     index: true,
     follow: true,
@@ -77,6 +81,7 @@ export default function RootLayout({
         <AuthProvider>
           <AppShell>{children}</AppShell>
           <CookieConsent />
+          <PwaInstallBanner />
         </AuthProvider>
       </body>
     </html>
