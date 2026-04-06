@@ -373,12 +373,12 @@ function EditTab({
     <div className="space-y-6">
       {/* Status */}
       <FieldGroup label="Status">
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setStatus(opt.value)}
-              className={`cursor-pointer rounded-full py-1.5 text-center text-sm font-semibold transition-colors ${
+              className={`cursor-pointer rounded-full py-2 text-center text-sm font-semibold transition-colors ${
                 status === opt.value
                   ? "bg-accent text-white"
                   : "bg-bg-medium text-text-muted hover:bg-accent/10"
@@ -476,7 +476,7 @@ function EditTab({
       )}
 
       {/* Save / Delete */}
-      <div className="flex items-center gap-4 pt-2">
+      <div className="flex flex-wrap items-center gap-4 pt-2">
         <button
           onClick={onSave}
           disabled={saving}

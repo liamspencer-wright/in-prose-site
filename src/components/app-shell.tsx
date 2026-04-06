@@ -24,9 +24,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-svh">
-      {/* Sidebar */}
+      {/* Sidebar — hidden on mobile */}
       <aside
-        className={`sticky top-0 flex h-svh flex-col border-r border-border bg-bg-medium transition-all duration-200 ${
+        className={`sticky top-0 hidden h-svh flex-col border-r border-border bg-bg-medium transition-all duration-200 sm:flex ${
           expanded ? "w-52" : "w-16"
         }`}
       >
@@ -128,8 +128,41 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content */}
-      <main id="main-content" className="flex-1 overflow-y-auto">{children}</main>
+      {/* Main content — add bottom padding on mobile for the nav bar */}
+      <main id="main-content" className="flex-1 overflow-y-auto pb-16 sm:pb-0">{children}</main>
+
+      {/* Bottom nav bar — mobile only */}
+      <nav
+        aria-label="Mobile navigation"
+        className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-border bg-bg-medium sm:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        {NAV_ITEMS.map((item) => {
+          const active =
+            item.href === "/"
+              ? pathname === "/"
+              : pathname.startsWith(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-label={item.label}
+              className={`flex flex-col items-center gap-0.5 px-2 py-2 ${
+                active ? "opacity-100" : "opacity-50"
+              }`}
+            >
+              <Image
+                src={item.icon}
+                alt=""
+                width={22}
+                height={22}
+                className="h-[22px] w-[22px]"
+              />
+              <span className="text-[10px] font-semibold">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
     </div>
   );
 }

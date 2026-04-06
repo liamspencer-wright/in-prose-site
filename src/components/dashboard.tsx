@@ -481,7 +481,7 @@ function RollingTargetCard({
 
       {displayHistory.length > 0 ? (
         /* Horizontal layout: bar chart left, circular progress right */
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4 max-sm:flex-col max-sm:gap-3">
           {/* Bar chart */}
           <div className="flex-1">
             <div className="relative flex items-end gap-1.5" style={{ height: "100px" }}>

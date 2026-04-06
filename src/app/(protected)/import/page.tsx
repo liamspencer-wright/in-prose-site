@@ -1111,7 +1111,7 @@ function MappingStep({
               <th className="px-3 py-2 text-left font-semibold">
                 Your CSV column
               </th>
-              <th className="px-3 py-2 text-left font-semibold text-text-muted">
+              <th className="px-3 py-2 text-left font-semibold text-text-muted max-sm:hidden">
                 Sample data
               </th>
             </tr>
@@ -1156,7 +1156,7 @@ function MappingStep({
                       ))}
                     </select>
                   </td>
-                  <td className="px-3 py-2 text-text-muted">
+                  <td className="px-3 py-2 text-text-muted max-sm:hidden">
                     {selectedCol !== null
                       ? sampleRows
                           .slice(0, 2)
@@ -1813,6 +1813,7 @@ function ComparisonTable({
   ];
 
   return (
+    <div className="overflow-x-auto">
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-border-subtle">
@@ -1932,6 +1933,7 @@ function ComparisonTable({
         })}
       </tbody>
     </table>
+    </div>
   );
 }
 
