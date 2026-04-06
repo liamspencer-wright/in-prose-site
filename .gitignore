@@ -27,3 +27,8 @@ next-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# Serwist service worker build output
+public/sw.js
+public/sw.js.map
+public/serwist-worker-*
