@@ -6,10 +6,9 @@ import { useAuth } from "@/components/auth-provider";
 import {
   type Habit,
   type HabitStreakData,
-  formatDateStr,
-  startOfWeek,
 } from "@/lib/habits";
 import { HabitCard } from "./habit-card";
+import { HabitFormModal } from "./habit-form";
 
 export function HabitsTab() {
   const { user } = useAuth();
@@ -19,6 +18,10 @@ export function HabitsTab() {
   const [streaks, setStreaks] = useState<Record<string, HabitStreakData>>({});
   const [habitLogs, setHabitLogs] = useState<Record<string, Set<string>>>({});
   const [loading, setLoading] = useState(true);
+
+  // Form modal
+  const [showForm, setShowForm] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -90,14 +93,12 @@ export function HabitsTab() {
 
       try {
         if (isCompleted) {
-          // Delete log
           await supabase
             .from("habit_logs")
             .delete()
             .eq("habit_id", habit.id)
             .eq("log_date", dateStr);
         } else {
-          // Upsert log
           await supabase.from("habit_logs").upsert(
             {
               habit_id: habit.id,
@@ -122,17 +123,45 @@ export function HabitsTab() {
           setStreaks(streaksMap);
         }
       } catch {
-        // Revert on error
         setHabitLogs((prev) => ({ ...prev, [habit.id]: currentLogs }));
       }
     },
     [user, habitLogs, supabase]
   );
 
-  // Expose openForm for the parent (habits-tab will manage its own form in #71)
-  // For now, the edit callback is a no-op placeholder
-  const [showForm, setShowForm] = useState(false);
-  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  // CRUD handlers
+  async function handleSave(
+    data: Omit<Habit, "id" | "user_id" | "created_at">,
+    id?: string
+  ) {
+    if (!user) return;
+
+    if (id) {
+      await supabase.from("habits").update(data).eq("id", id);
+    } else {
+      await supabase.from("habits").insert({ ...data, user_id: user.id });
+    }
+
+    setShowForm(false);
+    setEditingHabit(null);
+    await load();
+  }
+
+  async function handleArchive(habitId: string) {
+    await supabase
+      .from("habits")
+      .update({ is_active: false })
+      .eq("id", habitId);
+
+    setShowForm(false);
+    setEditingHabit(null);
+    await load();
+  }
+
+  function openCreate() {
+    setEditingHabit(null);
+    setShowForm(true);
+  }
 
   if (loading) {
     return (
@@ -147,16 +176,37 @@ export function HabitsTab() {
     );
   }
 
-  if (habits.length === 0) {
+  if (habits.length === 0 && !showForm) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-lg font-semibold text-text-primary">
-          Track your reading habits
-        </p>
-        <p className="mt-2 text-text-muted">
-          Create daily or weekly habits and track your streaks.
-        </p>
-      </div>
+      <>
+        <div className="py-16 text-center">
+          <p className="text-lg font-semibold text-text-primary">
+            Track your reading habits
+          </p>
+          <p className="mt-2 text-text-muted">
+            Create daily or weekly habits and track your streaks.
+          </p>
+          <button
+            onClick={openCreate}
+            className="mt-4 cursor-pointer rounded-(--radius-input) bg-accent px-6 py-2.5 font-serif font-bold text-white transition-opacity hover:opacity-88"
+          >
+            Create your first habit
+          </button>
+        </div>
+
+        {showForm && (
+          <HabitFormModal
+            existing={editingHabit}
+            activeCount={habits.length}
+            onSave={handleSave}
+            onArchive={editingHabit ? handleArchive : undefined}
+            onCancel={() => {
+              setShowForm(false);
+              setEditingHabit(null);
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -177,6 +227,31 @@ export function HabitsTab() {
           />
         ))}
       </div>
+
+      {/* FAB */}
+      <button
+        onClick={openCreate}
+        className="fixed right-8 bottom-8 flex h-14 w-14 cursor-pointer items-center justify-center rounded-full bg-accent text-white shadow-lg transition-transform hover:scale-105 max-sm:right-5 max-sm:bottom-5"
+        title="New habit"
+      >
+        <svg viewBox="0 0 24 24" className="h-7 w-7 fill-current">
+          <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+        </svg>
+      </button>
+
+      {/* Form modal */}
+      {showForm && (
+        <HabitFormModal
+          existing={editingHabit}
+          activeCount={habits.length}
+          onSave={handleSave}
+          onArchive={editingHabit ? handleArchive : undefined}
+          onCancel={() => {
+            setShowForm(false);
+            setEditingHabit(null);
+          }}
+        />
+      )}
     </>
   );
 }
