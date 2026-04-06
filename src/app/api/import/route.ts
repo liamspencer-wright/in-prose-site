@@ -12,6 +12,10 @@ type ImportBook = {
   review?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
+  /** If set, update this existing user_book_reads row instead of creating a new one */
+  matchedReadId?: string | null;
+  /** If true, the book already exists in the user's library (skip books + user_books insert) */
+  bookInLibrary?: boolean;
 };
 
 type ImportResult = {
@@ -53,57 +57,62 @@ export async function POST(request: NextRequest) {
 
   const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
 
-  // Insert new books
+  // Helper: get next read_number for a (user_id, isbn13) pair
+  async function getNextReadNumber(isbn13: string): Promise<number> {
+    const { data } = await supabase
+      .from("user_book_reads")
+      .select("read_number")
+      .eq("user_id", user!.id)
+      .eq("isbn13", isbn13)
+      .order("read_number", { ascending: false })
+      .limit(1);
+    return (data?.[0]?.read_number ?? 0) + 1;
+  }
+
+  // Helper: set active_read_id to the latest read for a book
+  async function setActiveRead(isbn13: string) {
+    const { data: latestRead } = await supabase
+      .from("user_book_reads")
+      .select("id")
+      .eq("user_id", user!.id)
+      .eq("isbn13", isbn13)
+      .order("read_number", { ascending: false })
+      .limit(1);
+
+    if (latestRead?.[0]) {
+      await supabase
+        .from("user_books")
+        .update({ active_read_id: latestRead[0].id })
+        .eq("user_id", user!.id)
+        .eq("isbn13", isbn13);
+    }
+  }
+
+  // ── Process new books/reads ──
+  const affectedIsbns = new Set<string>();
+
   for (const book of books) {
     if (!book.isbn13 || typeof book.isbn13 !== "string") {
       result.skipped++;
       continue;
     }
 
-    const { error: bookError } = await supabase.from("books").upsert(
-      { isbn13: book.isbn13 },
-      { onConflict: "isbn13", ignoreDuplicates: true }
-    );
+    // Ensure books table row exists (skip if already in library)
+    if (!book.bookInLibrary) {
+      const { error: bookError } = await supabase.from("books").upsert(
+        { isbn13: book.isbn13 },
+        { onConflict: "isbn13", ignoreDuplicates: true }
+      );
 
-    if (bookError) {
-      result.errors.push(`${book.isbn13}: failed to upsert book`);
-      continue;
-    }
-
-    const { error: linkError } = await supabase.from("user_books").insert({
-      user_id: user.id,
-      isbn13: book.isbn13,
-      status: book.status ?? "to_read",
-      ownership: book.ownership ?? "not_owned",
-      visibility: book.visibility ?? "public",
-      rating: book.rating ?? null,
-      review: book.review ?? null,
-      started_at: book.started_at ?? null,
-      finished_at: book.finished_at ?? null,
-    });
-
-    if (linkError) {
-      if (linkError.code === "23505") {
-        result.skipped++;
-      } else {
-        result.errors.push(`${book.isbn13}: ${linkError.message}`);
+      if (bookError) {
+        result.errors.push(`${book.isbn13}: failed to upsert book`);
+        continue;
       }
-      continue;
-    }
 
-    result.added++;
-  }
-
-  // Update existing books
-  for (const book of updates) {
-    if (!book.isbn13 || typeof book.isbn13 !== "string") {
-      result.skipped++;
-      continue;
-    }
-
-    const { error: updateError } = await supabase
-      .from("user_books")
-      .update({
+      // Ensure user_books ownership row exists
+      const { error: linkError } = await supabase.from("user_books").insert({
+        user_id: user.id,
+        isbn13: book.isbn13,
         status: book.status ?? "to_read",
         ownership: book.ownership ?? "not_owned",
         visibility: book.visibility ?? "public",
@@ -111,16 +120,102 @@ export async function POST(request: NextRequest) {
         review: book.review ?? null,
         started_at: book.started_at ?? null,
         finished_at: book.finished_at ?? null,
-      })
-      .eq("user_id", user.id)
-      .eq("isbn13", book.isbn13);
+      });
 
-    if (updateError) {
-      result.errors.push(`${book.isbn13}: ${updateError.message}`);
+      if (linkError && linkError.code !== "23505") {
+        result.errors.push(`${book.isbn13}: ${linkError.message}`);
+        continue;
+      }
+    }
+
+    // Create user_book_reads row
+    const readNumber = await getNextReadNumber(book.isbn13);
+    const { error: readError } = await supabase
+      .from("user_book_reads")
+      .insert({
+        user_id: user.id,
+        isbn13: book.isbn13,
+        read_number: readNumber,
+        status: book.status ?? "to_read",
+        rating: book.rating ?? null,
+        review: book.review ?? null,
+        started_at: book.started_at ?? null,
+        finished_at: book.finished_at ?? null,
+      });
+
+    if (readError) {
+      result.errors.push(`${book.isbn13}: ${readError.message}`);
+    } else {
+      result.added++;
+      affectedIsbns.add(book.isbn13);
+    }
+  }
+
+  // ── Process updates (matched reads) ──
+  for (const book of updates) {
+    if (!book.isbn13 || typeof book.isbn13 !== "string") {
+      result.skipped++;
       continue;
     }
 
-    result.updated++;
+    if (book.matchedReadId) {
+      // Update specific user_book_reads row
+      const { error: updateError } = await supabase
+        .from("user_book_reads")
+        .update({
+          status: book.status ?? "to_read",
+          rating: book.rating ?? null,
+          review: book.review ?? null,
+          started_at: book.started_at ?? null,
+          finished_at: book.finished_at ?? null,
+        })
+        .eq("id", book.matchedReadId)
+        .eq("user_id", user.id);
+
+      if (updateError) {
+        result.errors.push(`${book.isbn13}: ${updateError.message}`);
+        continue;
+      }
+
+      // Also update ownership/visibility on user_books
+      await supabase
+        .from("user_books")
+        .update({
+          ownership: book.ownership ?? "not_owned",
+          visibility: book.visibility ?? "public",
+        })
+        .eq("user_id", user.id)
+        .eq("isbn13", book.isbn13);
+
+      result.updated++;
+    } else {
+      // No matched read — fallback to updating user_books directly (legacy)
+      const { error: updateError } = await supabase
+        .from("user_books")
+        .update({
+          status: book.status ?? "to_read",
+          ownership: book.ownership ?? "not_owned",
+          visibility: book.visibility ?? "public",
+          rating: book.rating ?? null,
+          review: book.review ?? null,
+          started_at: book.started_at ?? null,
+          finished_at: book.finished_at ?? null,
+        })
+        .eq("user_id", user.id)
+        .eq("isbn13", book.isbn13);
+
+      if (updateError) {
+        result.errors.push(`${book.isbn13}: ${updateError.message}`);
+        continue;
+      }
+
+      result.updated++;
+    }
+  }
+
+  // Set active_read_id for all affected ISBNs
+  for (const isbn of affectedIsbns) {
+    await setActiveRead(isbn);
   }
 
   return NextResponse.json(result);

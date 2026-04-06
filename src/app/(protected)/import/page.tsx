@@ -31,6 +31,10 @@ type ImportRow = {
   metaStatus: "pending" | "loading" | "found" | "not_found";
   selected: boolean;
   isDuplicate: boolean;
+  /** ID of matched user_book_reads row (for updating an existing read) */
+  matchedReadId?: string;
+  /** True if the book ISBN already exists in the user's library */
+  bookInLibrary?: boolean;
   // Editable fields
   status: string;
   ownership: string;
@@ -39,6 +43,16 @@ type ImportRow = {
   review: string | null;
   started_at: string | null;
   finished_at: string | null;
+};
+
+type ExistingRead = {
+  id: string;
+  read_number: number;
+  status: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  rating: number | null;
+  review: string | null;
 };
 
 type ExistingBook = {
@@ -53,6 +67,7 @@ type ExistingBook = {
   visibility: string | null;
   cover_url: string | null;
   first_author_name: string | null;
+  reads?: ExistingRead[];
 };
 
 type Step =
@@ -220,6 +235,81 @@ function cleanIsbn(raw: string | null): string | null {
   const cleaned = raw.replace(/[\s"'=-]/g, "");
   if (/^\d{13}$/.test(cleaned)) return cleaned;
   if (/^\d{9}[\dXx]$/.test(cleaned)) return cleaned;
+  return null;
+}
+
+/* ── Re-read matching ── */
+
+/**
+ * Match CSV rows to existing user_book_reads by finished_at (+/-1 day),
+ * falling back to started_at. Mutates rows in place, setting isDuplicate,
+ * matchedReadId, and bookInLibrary.
+ */
+function matchReads(rows: ImportRow[], existingMap: Map<string, ExistingBook>) {
+  // Group CSV rows by ISBN
+  const groups = new Map<string, ImportRow[]>();
+  for (const row of rows) {
+    const group = groups.get(row.isbn13) ?? [];
+    group.push(row);
+    groups.set(row.isbn13, group);
+  }
+
+  for (const [isbn, csvRows] of groups) {
+    const existing = existingMap.get(isbn);
+    if (!existing) continue; // new book — no matching needed
+
+    const reads = existing.reads ?? [];
+    const usedReadIds = new Set<string>();
+
+    // Mark all rows for this ISBN as bookInLibrary
+    for (const row of csvRows) {
+      row.bookInLibrary = true;
+    }
+
+    // Match by finished_at first, then started_at
+    for (const csvRow of csvRows) {
+      let matched: ExistingRead | null = null;
+
+      // Try matching by finished_at (+/-1 day)
+      if (csvRow.finished_at) {
+        matched = findMatchingRead(reads, usedReadIds, csvRow.finished_at, "finished_at")
+          ?? findMatchingRead(reads, usedReadIds, csvRow.finished_at, "started_at");
+      }
+
+      // Fallback: match by started_at (+/-1 day)
+      if (!matched && csvRow.started_at) {
+        matched = findMatchingRead(reads, usedReadIds, csvRow.started_at, "started_at")
+          ?? findMatchingRead(reads, usedReadIds, csvRow.started_at, "finished_at");
+      }
+
+      if (matched) {
+        csvRow.isDuplicate = true;
+        csvRow.matchedReadId = matched.id;
+        usedReadIds.add(matched.id);
+      }
+    }
+  }
+}
+
+/** Find a read whose `field` date is within 1 day of `csvDate`. */
+function findMatchingRead(
+  reads: ExistingRead[],
+  usedIds: Set<string>,
+  csvDate: string,
+  field: "started_at" | "finished_at"
+): ExistingRead | null {
+  const csvTime = new Date(csvDate).getTime();
+  if (isNaN(csvTime)) return null;
+  const ONE_DAY = 86400000;
+
+  for (const read of reads) {
+    if (usedIds.has(read.id)) continue;
+    const readDate = read[field];
+    if (!readDate) continue;
+    const readTime = new Date(readDate).getTime();
+    if (isNaN(readTime)) continue;
+    if (Math.abs(csvTime - readTime) <= ONE_DAY) return read;
+  }
   return null;
 }
 
@@ -398,16 +488,10 @@ export default function ImportPage() {
       return;
     }
 
-    const seen = new Set<string>();
-    const deduped = parsed.filter((r) => {
-      if (seen.has(r.isbn13)) return false;
-      seen.add(r.isbn13);
-      return true;
-    });
-
-    setRows(deduped);
+    // Keep all rows (including re-reads of the same ISBN)
+    setRows(parsed);
     setStep("fetching");
-    fetchMetadata(deduped);
+    fetchMetadata(parsed);
   }, [fieldMap, rawRows, ratingScale, dateFormat, statusMap]);
 
   /* ── Metadata fetch ── */
@@ -416,7 +500,7 @@ export default function ImportPage() {
     abortRef.current = false;
     setFetchProgress({ done: 0, total: importRows.length });
 
-    // Fetch existing library ISBNs + their data
+    // Fetch existing library ISBNs + their data (including user_book_reads)
     const existingMap = new Map<string, ExistingBook>();
     try {
       const res = await fetch("/api/library/isbns?details=1");
@@ -431,52 +515,66 @@ export default function ImportPage() {
     }
     setExistingBooks(existingMap);
 
+    // Run re-read matching before metadata fetch
+    matchReads(importRows, existingMap);
+
     const updated = [...importRows];
 
-    for (let i = 0; i < updated.length; i += 5) {
+    // Deduplicate ISBNs for metadata lookup (one API call per unique ISBN)
+    const uniqueIsbns = [...new Set(updated.map((r) => r.isbn13))];
+    const metaCache = new Map<string, BookMeta | null>();
+
+    for (let i = 0; i < uniqueIsbns.length; i += 5) {
       if (abortRef.current) break;
 
-      const batch = updated.slice(i, i + 5);
+      const batch = uniqueIsbns.slice(i, i + 5);
       await Promise.all(
-        batch.map(async (row) => {
-          const idx = updated.findIndex((r) => r.id === row.id);
-          updated[idx] = { ...updated[idx], metaStatus: "loading" };
-
+        batch.map(async (isbn) => {
           try {
             const res = await fetch(
-              `/api/import?isbn=${encodeURIComponent(row.isbn13)}`
+              `/api/import?isbn=${encodeURIComponent(isbn)}`
             );
             if (res.ok) {
               const meta: BookMeta | null = await res.json();
-              const isDuplicate = existingMap.has(row.isbn13);
-              updated[idx] = {
-                ...updated[idx],
-                meta,
-                metaStatus: meta ? "found" : "not_found",
-                isDuplicate,
-                selected: !isDuplicate,
-              };
+              metaCache.set(isbn, meta);
             } else {
-              updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+              metaCache.set(isbn, null);
             }
           } catch {
-            updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+            metaCache.set(isbn, null);
           }
         })
       );
 
+      // Apply cached meta to all rows with these ISBNs
+      for (const isbn of batch) {
+        const meta = metaCache.get(isbn) ?? null;
+        for (let j = 0; j < updated.length; j++) {
+          if (updated[j].isbn13 !== isbn) continue;
+          if (updated[j].metaStatus === "found") continue; // already resolved
+          updated[j] = {
+            ...updated[j],
+            meta,
+            metaStatus: meta ? "found" : "not_found",
+            // isDuplicate was already set by matchReads — preserve it
+            selected: meta ? !updated[j].isDuplicate : false,
+          };
+        }
+      }
+
       setRows([...updated]);
-      setFetchProgress({
-        done: Math.min(i + 5, updated.length),
-        total: updated.length,
-      });
+      // Count total rows that have been resolved
+      const resolvedCount = updated.filter(
+        (r) => r.metaStatus === "found" || r.metaStatus === "not_found"
+      ).length;
+      setFetchProgress({ done: resolvedCount, total: updated.length });
     }
 
     // Determine first review step based on available data
     const hasReady = updated.some(
-      (r) => r.metaStatus === "found" && !existingMap.has(r.isbn13)
+      (r) => r.metaStatus === "found" && !r.isDuplicate
     );
-    const hasDuplicates = updated.some((r) => existingMap.has(r.isbn13));
+    const hasDuplicates = updated.some((r) => r.isDuplicate);
     const hasNotFound = updated.some((r) => r.metaStatus === "not_found");
 
     if (hasReady) setStep("review-ready");
@@ -566,30 +664,25 @@ export default function ImportPage() {
     setError(null);
 
     try {
+      const mapRow = (r: ImportRow) => ({
+        isbn13: r.isbn13,
+        status: r.status,
+        ownership: r.ownership,
+        visibility: r.visibility,
+        rating: r.rating,
+        review: r.review,
+        started_at: r.started_at,
+        finished_at: r.finished_at,
+        matchedReadId: r.matchedReadId ?? null,
+        bookInLibrary: r.bookInLibrary ?? false,
+      });
+
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          books: newBooks.map((r) => ({
-            isbn13: r.isbn13,
-            status: r.status,
-            ownership: r.ownership,
-            visibility: r.visibility,
-            rating: r.rating,
-            review: r.review,
-            started_at: r.started_at,
-            finished_at: r.finished_at,
-          })),
-          updates: updates.map((r) => ({
-            isbn13: r.isbn13,
-            status: r.status,
-            ownership: r.ownership,
-            visibility: r.visibility,
-            rating: r.rating,
-            review: r.review,
-            started_at: r.started_at,
-            finished_at: r.finished_at,
-          })),
+          books: newBooks.map(mapRow),
+          updates: updates.map(mapRow),
         }),
       });
 
