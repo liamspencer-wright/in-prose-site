@@ -56,62 +56,72 @@ export async function POST(request: NextRequest) {
       const result: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
       let processed = 0;
 
-      // Insert new books
-      for (const book of books) {
-        if (!book.isbn13 || typeof book.isbn13 !== "string") {
-          result.skipped++;
-          processed++;
-          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
-          continue;
-        }
+      // Bulk upsert books table (ensure isbn13 rows exist)
+      const validBooks = books.filter(
+        (b) => b.isbn13 && typeof b.isbn13 === "string"
+      );
+      const skippedBooks = books.length - validBooks.length;
+      result.skipped += skippedBooks;
+      processed += skippedBooks;
 
-        const { error: bookError } = await supabase.from("books").upsert(
-          { isbn13: book.isbn13 },
+      if (validBooks.length > 0) {
+        const { error: bulkBookError } = await supabase.from("books").upsert(
+          validBooks.map((b) => ({ isbn13: b.isbn13 })),
           { onConflict: "isbn13", ignoreDuplicates: true }
         );
 
-        if (bookError) {
-          result.errors.push(`${book.isbn13}: failed to upsert book`);
-          processed++;
-          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
-          continue;
-        }
-
-        const { error: linkError } = await supabase.from("user_books").insert({
-          user_id: user.id,
-          isbn13: book.isbn13,
-          status: book.status ?? "to_read",
-          ownership: book.ownership ?? "not_owned",
-          visibility: book.visibility ?? "public",
-          rating: book.rating ?? null,
-          review: book.review ?? null,
-          started_at: book.started_at ?? null,
-          finished_at: book.finished_at ?? null,
-        });
-
-        if (linkError) {
-          if (linkError.code === "23505") {
-            result.skipped++;
-          } else {
-            result.errors.push(`${book.isbn13}: ${linkError.message}`);
+        if (bulkBookError) {
+          // Fallback: all new books fail
+          for (const b of validBooks) {
+            result.errors.push(`${b.isbn13}: failed to upsert book`);
           }
+          processed += validBooks.length;
         } else {
-          result.added++;
-        }
+          // Bulk insert user_books — process in chunks to get per-book errors
+          // Supabase upsert doesn't easily report per-row errors, so we insert
+          // individually but only the user_books link (books row already exists)
+          for (const book of validBooks) {
+            const { error: linkError } = await supabase.from("user_books").insert({
+              user_id: user.id,
+              isbn13: book.isbn13,
+              status: book.status ?? "to_read",
+              ownership: book.ownership ?? "not_owned",
+              visibility: book.visibility ?? "public",
+              rating: book.rating ?? null,
+              review: book.review ?? null,
+              started_at: book.started_at ?? null,
+              finished_at: book.finished_at ?? null,
+            });
 
-        processed++;
+            if (linkError) {
+              if (linkError.code === "23505") {
+                result.skipped++;
+              } else {
+                result.errors.push(`${book.isbn13}: ${linkError.message}`);
+              }
+            } else {
+              result.added++;
+            }
+
+            processed++;
+            controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
+          }
+        }
+      }
+
+      if (processed > 0 && validBooks.length === 0) {
         controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
 
-      // Update existing books
-      for (const book of updates) {
-        if (!book.isbn13 || typeof book.isbn13 !== "string") {
-          result.skipped++;
-          processed++;
-          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
-          continue;
-        }
+      // Update existing books (still per-row — each needs a different WHERE)
+      const validUpdates = updates.filter(
+        (b) => b.isbn13 && typeof b.isbn13 === "string"
+      );
+      const skippedUpdates = updates.length - validUpdates.length;
+      result.skipped += skippedUpdates;
+      processed += skippedUpdates;
 
+      for (const book of validUpdates) {
         const { error: updateError } = await supabase
           .from("user_books")
           .update({

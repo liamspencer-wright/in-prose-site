@@ -542,46 +542,127 @@ export default function ImportPage() {
     setExistingBooks(existingMap);
 
     const updated = [...importRows];
+    const allIsbns = updated.map((r) => r.isbn13);
     const batchStartTime = Date.now();
     setFetchStartTime(batchStartTime);
 
-    for (let i = 0; i < updated.length; i += 5) {
-      if (abortRef.current) break;
-
-      const batch = updated.slice(i, i + 5);
-      await Promise.all(
-        batch.map(async (row) => {
-          const idx = updated.findIndex((r) => r.id === row.id);
-          updated[idx] = { ...updated[idx], metaStatus: "loading" };
-
-          try {
-            const res = await fetch(
-              `/api/import?isbn=${encodeURIComponent(row.isbn13)}`
-            );
-            if (res.ok) {
-              const meta: BookMeta | null = await res.json();
-              const isDuplicate = existingMap.has(row.isbn13);
-              updated[idx] = {
-                ...updated[idx],
-                meta,
-                metaStatus: meta ? "found" : "not_found",
-                isDuplicate,
-                selected: !isDuplicate,
-              };
-            } else {
-              updated[idx] = { ...updated[idx], metaStatus: "not_found" };
-            }
-          } catch {
-            updated[idx] = { ...updated[idx], metaStatus: "not_found" };
-          }
-        })
-      );
-
-      setRows([...updated]);
-      setFetchProgress({
-        done: Math.min(i + 5, updated.length),
-        total: updated.length,
+    // Step 1: Batch DB lookup — single request for all ISBNs
+    let dbFoundMap = new Map<string, BookMeta>();
+    let needsExternal: string[] = allIsbns;
+    try {
+      const batchRes = await fetch("/api/import/batch-meta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isbns: allIsbns }),
       });
+      if (batchRes.ok) {
+        const batchData = await batchRes.json();
+        for (const meta of batchData.found ?? []) {
+          dbFoundMap.set(meta.isbn13, meta);
+        }
+        needsExternal = batchData.notFound ?? [];
+      }
+    } catch {
+      // Fall through — all ISBNs will go to external lookup
+    }
+
+    // Apply DB-found results immediately
+    let progressDone = 0;
+    for (let i = 0; i < updated.length; i++) {
+      const meta = dbFoundMap.get(updated[i].isbn13);
+      if (meta) {
+        const isDuplicate = existingMap.has(updated[i].isbn13);
+        updated[i] = {
+          ...updated[i],
+          meta,
+          metaStatus: "found",
+          isDuplicate,
+          selected: !isDuplicate,
+        };
+        progressDone++;
+      }
+    }
+    setRows([...updated]);
+    setFetchProgress({ done: progressDone, total: updated.length });
+
+    // Step 2: Stream external lookups for remaining ISBNs
+    if (needsExternal.length > 0 && !abortRef.current) {
+      // Mark remaining as loading
+      for (const isbn of needsExternal) {
+        const idx = updated.findIndex((r) => r.isbn13 === isbn);
+        if (idx !== -1) updated[idx] = { ...updated[idx], metaStatus: "loading" };
+      }
+      setRows([...updated]);
+
+      try {
+        const streamRes = await fetch("/api/import/stream-meta", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isbns: needsExternal }),
+        });
+
+        if (streamRes.ok && streamRes.body) {
+          const reader = streamRes.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (!abortRef.current) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() ?? "";
+
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const event = JSON.parse(line);
+                if (event.type === "progress") {
+                  const idx = updated.findIndex((r) => r.isbn13 === event.isbn);
+                  if (idx !== -1) {
+                    const isDuplicate = existingMap.has(event.isbn);
+                    updated[idx] = {
+                      ...updated[idx],
+                      meta: event.result,
+                      metaStatus: event.result ? "found" : "not_found",
+                      isDuplicate,
+                      selected: event.result ? !isDuplicate : false,
+                    };
+                    progressDone++;
+                    setRows([...updated]);
+                    setFetchProgress({ done: progressDone, total: updated.length });
+                  }
+                }
+              } catch {
+                // skip malformed lines
+              }
+            }
+          }
+        } else {
+          // Fallback: mark all remaining as not found
+          for (const isbn of needsExternal) {
+            const idx = updated.findIndex((r) => r.isbn13 === isbn);
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+              progressDone++;
+            }
+          }
+          setRows([...updated]);
+          setFetchProgress({ done: progressDone, total: updated.length });
+        }
+      } catch {
+        // Mark remaining as not found on network error
+        for (const isbn of needsExternal) {
+          const idx = updated.findIndex((r) => r.isbn13 === isbn);
+          if (idx !== -1 && updated[idx].metaStatus === "loading") {
+            updated[idx] = { ...updated[idx], metaStatus: "not_found" };
+            progressDone++;
+          }
+        }
+        setRows([...updated]);
+        setFetchProgress({ done: progressDone, total: updated.length });
+      }
     }
 
     // Determine first review step based on available data
