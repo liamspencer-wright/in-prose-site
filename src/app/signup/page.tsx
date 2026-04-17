@@ -2,17 +2,26 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyAuthError } from "@/lib/auth-errors";
+import { reportAuthFailure } from "@/lib/auth-alert";
 import Image from "next/image";
 import Link from "next/link";
 
-async function handleOAuthSignUp(provider: "apple" | "google") {
+async function handleOAuthSignUp(
+  provider: "apple" | "google",
+  setError: (msg: string) => void,
+) {
   const supabase = createClient();
-  await supabase.auth.signInWithOAuth({
+  const { error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
       redirectTo: `${window.location.origin}/auth/callback`,
     },
   });
+  if (error) {
+    reportAuthFailure(error, "signup", provider);
+    setError(friendlyAuthError(error));
+  }
 }
 
 function passwordMeetsRequirements(pwd: string) {
@@ -75,7 +84,8 @@ export default function SignupPage() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      reportAuthFailure(authError, "signup", "email", trimmedEmail);
+      setError(friendlyAuthError(authError));
       return;
     }
 
@@ -125,7 +135,7 @@ export default function SignupPage() {
         <div className="mb-4 flex flex-col gap-4">
           <button
             type="button"
-            onClick={() => handleOAuthSignUp("apple")}
+            onClick={() => handleOAuthSignUp("apple", setError)}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-input) bg-black px-6 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
           >
             <svg className="h-5 w-5" viewBox="0 0 17 20" fill="currentColor">
@@ -136,7 +146,7 @@ export default function SignupPage() {
 
           <button
             type="button"
-            onClick={() => handleOAuthSignUp("google")}
+            onClick={() => handleOAuthSignUp("google", setError)}
             className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-input) border border-border bg-white px-6 py-3 font-serif text-lg font-bold text-text-primary transition-opacity hover:opacity-88"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
