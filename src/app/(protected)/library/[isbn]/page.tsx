@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
 import UserAvatar from "@/components/user-avatar";
+import { useEnrichmentTrigger } from "@/lib/enrichment/use-enrichment-trigger";
+import { EnrichmentAnswersView } from "@/components/enrichment/enrichment-answers-view";
+import { getActiveTemplate, getResponse } from "@/lib/enrichment/client";
+import type {
+  AnswersMap,
+  CustomAnswersMap,
+  SurveyTemplate,
+} from "@/lib/enrichment/types";
 
 type BookDetail = {
   isbn13: string;
@@ -81,6 +89,12 @@ function BookDetailContent() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
 
+  const enrichment = useEnrichmentTrigger({
+    isbn13: isbn,
+    userId: user?.id ?? null,
+  });
+  const previousStatusRef = useRef<string | null>(null);
+
   // Editable fields
   const [status, setStatus] = useState("");
   const [ownership, setOwnership] = useState("");
@@ -111,6 +125,7 @@ function BookDetailContent() {
 
       const b = data as BookDetail;
       setBook(b);
+      previousStatusRef.current = b.status ?? "to_read";
       // If a status was passed via URL (e.g. from dashboard Finish/DNF), pre-select it
       setStatus(initialStatus ?? b.status ?? "to_read");
       setOwnership(b.ownership ?? "not_owned");
@@ -134,6 +149,8 @@ function BookDetailContent() {
     setSaving(true);
     setSaved(false);
 
+    const prevStatus = previousStatusRef.current;
+
     await supabase
       .from("user_books")
       .update({
@@ -151,7 +168,12 @@ function BookDetailContent() {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [user, book, supabase, isbn, status, ownership, visibility, rating, review, startedAt, finishedAt]);
+    // Fire enrichment trigger after a successful save when the user has
+    // just moved to `reading` or `finished` — the sheet is non-blocking
+    // and the save already landed.
+    await enrichment.maybeOpen(prevStatus, status);
+    previousStatusRef.current = status;
+  }, [user, book, supabase, isbn, status, ownership, visibility, rating, review, startedAt, finishedAt, enrichment]);
 
   async function handleDelete() {
     if (!user) return;
@@ -183,6 +205,7 @@ function BookDetailContent() {
 
   return (
     <div className="mx-auto w-full max-w-2xl px-8 pt-6 pb-12 max-sm:px-5">
+      {enrichment.sheet}
       <Link
         href={from === "account" ? "/account" : from === "search" ? "/search" : "/library"}
         className="mb-4 inline-block text-sm text-accent hover:underline"
@@ -241,7 +264,10 @@ function BookDetailContent() {
 
       {/* Tab content */}
       {activeTab === "details" && (
-        <DetailsTab book={book} />
+        <DetailsTab
+          book={book}
+          onEditEnrichment={() => setActiveTab("edit")}
+        />
       )}
 
       {activeTab === "edit" && (
@@ -279,7 +305,43 @@ function BookDetailContent() {
 
 /* ── Details Tab ── */
 
-function DetailsTab({ book }: { book: BookDetail }) {
+function DetailsTab({
+  book,
+  onEditEnrichment,
+}: {
+  book: BookDetail;
+  onEditEnrichment: () => void;
+}) {
+  const { user } = useAuth();
+  const [enrichmentTemplate, setEnrichmentTemplate] =
+    useState<SurveyTemplate | null>(null);
+  const [enrichmentAnswers, setEnrichmentAnswers] = useState<AnswersMap>({});
+  const [enrichmentCustom, setEnrichmentCustom] = useState<CustomAnswersMap>({});
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    async function load() {
+      const template = await getActiveTemplate("enrichment_v1");
+      if (!template || cancelled) return;
+      const response = await getResponse(
+        user!.id,
+        book.isbn13,
+        template.version_id
+      );
+      if (cancelled) return;
+      setEnrichmentTemplate(template);
+      setEnrichmentAnswers((response?.answers as AnswersMap) ?? {});
+      setEnrichmentCustom(
+        (response?.answers_custom as CustomAnswersMap) ?? {}
+      );
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, book.isbn13]);
+
   return (
     <div className="space-y-6">
       {/* Synopsis */}
@@ -324,6 +386,17 @@ function DetailsTab({ book }: { book: BookDetail }) {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Your take — enrichment answers summary */}
+      {enrichmentTemplate && (
+        <EnrichmentAnswersView
+          template={enrichmentTemplate}
+          answers={enrichmentAnswers}
+          answersCustom={enrichmentCustom}
+          title="Your take"
+          onEdit={onEditEnrichment}
+        />
       )}
     </div>
   );
@@ -564,6 +637,11 @@ function CommunityTab({ book }: { book: BookDetail }) {
   const [loadingPublicMore, setLoadingPublicMore] = useState(false);
   const [hasMorePublic, setHasMorePublic] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [enrichmentTemplate, setEnrichmentTemplate] =
+    useState<SurveyTemplate | null>(null);
+  const [friendEnrichment, setFriendEnrichment] = useState<
+    Record<string, AnswersMap>
+  >({});
 
   useEffect(() => {
     if (!user) return;
@@ -594,6 +672,25 @@ function CommunityTab({ book }: { book: BookDetail }) {
         const pubResults = publicRes.data as PublicReview[];
         setPublicReviews(pubResults);
         setHasMorePublic(pubResults.length === PUBLIC_PAGE_SIZE);
+      }
+
+      // Enrichment: template + per-friend answers for this book. RLS on
+      // enrichment_responses (via the SECURITY DEFINER RPC) enforces
+      // visibility so we don't filter on the client.
+      const template = await getActiveTemplate("enrichment_v1");
+      setEnrichmentTemplate(template);
+      const enrichRes = await supabase.rpc("get_friend_enrichment_for_isbns", {
+        p_isbn13s: [book.isbn13],
+      });
+      if (enrichRes.data) {
+        const byUser: Record<string, AnswersMap> = {};
+        for (const row of enrichRes.data as Array<{
+          user_id: string;
+          answers: AnswersMap;
+        }>) {
+          byUser[row.user_id] = row.answers ?? {};
+        }
+        setFriendEnrichment(byUser);
       }
 
       setLoading(false);
@@ -696,6 +793,8 @@ function CommunityTab({ book }: { book: BookDetail }) {
                 review={f.review}
                 reviewSpoiler={f.review_spoiler}
                 createdAt={f.created_at}
+                enrichmentTemplate={enrichmentTemplate}
+                enrichmentAnswers={friendEnrichment[f.user_id]}
               />
             ))}
           </div>
@@ -749,6 +848,8 @@ function ReviewCard({
   review,
   reviewSpoiler,
   createdAt,
+  enrichmentTemplate,
+  enrichmentAnswers,
 }: {
   userId: string;
   displayName: string;
@@ -757,6 +858,8 @@ function ReviewCard({
   review: string | null;
   reviewSpoiler: boolean;
   createdAt: string;
+  enrichmentTemplate?: SurveyTemplate | null;
+  enrichmentAnswers?: AnswersMap;
 }) {
   const [spoilerRevealed, setSpoilerRevealed] = useState(false);
   const hasSpoiler = reviewSpoiler && review && !spoilerRevealed;
@@ -799,6 +902,14 @@ function ReviewCard({
               Contains spoilers — click to reveal
             </button>
           )}
+        </div>
+      )}
+      {enrichmentTemplate && enrichmentAnswers && (
+        <div className="mt-3 rounded-(--radius-card) bg-white/10 p-3 text-text-on-accent">
+          <EnrichmentAnswersView
+            template={enrichmentTemplate}
+            answers={enrichmentAnswers}
+          />
         </div>
       )}
       <p className="mt-2 text-xs text-text-on-accent/50">{formatDate(createdAt)}</p>
