@@ -1,5 +1,14 @@
 {
   "webcredentials": {
     "apps": [ "XN3KBR57KH.uk.co.inprose" ]
+  },
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "XN3KBR57KH.uk.co.inprose",
+        "paths": [ "/book/*", "/s/*" ]
+      }
+    ]
   }
 }

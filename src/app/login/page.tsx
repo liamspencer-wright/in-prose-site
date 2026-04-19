@@ -2,6 +2,8 @@
 
 import { Suspense, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { friendlyAuthError } from "@/lib/auth-errors";
+import { reportAuthFailure } from "@/lib/auth-alert";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -36,7 +38,8 @@ function LoginForm() {
       },
     });
     if (oauthError) {
-      setError(oauthError.message);
+      reportAuthFailure(oauthError, "login", provider);
+      setError(friendlyAuthError(oauthError));
     }
   }
 
@@ -63,7 +66,8 @@ function LoginForm() {
     setLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      reportAuthFailure(authError, "login", "email", trimmedEmail);
+      setError(friendlyAuthError(authError));
       return;
     }
 

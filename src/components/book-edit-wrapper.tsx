@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth-provider";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useEnrichmentTrigger } from "@/lib/enrichment/use-enrichment-trigger";
 
 const STATUS_OPTIONS = [
   { value: "to_read", label: "To read" },
@@ -49,6 +50,14 @@ export function BookEditWrapper({
   const [mounted, setMounted] = useState(false);
   const [isInLibrary, setIsInLibrary] = useState(false);
   const [loadingBook, setLoadingBook] = useState(true);
+
+  const enrichment = useEnrichmentTrigger({
+    isbn13: isbn,
+    userId: user?.id ?? null,
+  });
+  // Tracks the last-persisted status so maybeOpen fires on real transitions,
+  // not on every re-render that happens to have the same status value.
+  const previousStatusRef = useRef<string | null>(null);
 
   // Editable fields
   const [status, setStatus] = useState("to_read");
@@ -95,6 +104,9 @@ export function BookEditWrapper({
         setFinishedAt(
           data.finished_at ? (data.finished_at as string).slice(0, 10) : ""
         );
+        previousStatusRef.current = data.status ?? "to_read";
+      } else {
+        previousStatusRef.current = null;
       }
       setLoadingBook(false);
     }
@@ -106,6 +118,8 @@ export function BookEditWrapper({
     if (!user) return;
     setSaving(true);
     setSaved(false);
+
+    const prevStatus = previousStatusRef.current;
 
     if (isInLibrary) {
       // Update existing record
@@ -158,6 +172,11 @@ export function BookEditWrapper({
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+    // Trigger the enrichment flow on real status transitions (e.g.
+    // to_read → reading, reading → finished). Saving is non-blocking —
+    // the sheet opens after the save completes and can be dismissed.
+    await enrichment.maybeOpen(prevStatus, status);
+    previousStatusRef.current = status;
   }, [
     user,
     supabase,
@@ -171,6 +190,7 @@ export function BookEditWrapper({
     review,
     startedAt,
     finishedAt,
+    enrichment,
   ]);
 
   const handleDelete = useCallback(async () => {
@@ -228,6 +248,7 @@ export function BookEditWrapper({
   // Logged in: show edit controls
   return (
     <section className="mt-8">
+      {enrichment.sheet}
       <h2 className="mb-4 text-lg font-bold">
         {isInLibrary ? "Your book" : "Add to your library"}
       </h2>

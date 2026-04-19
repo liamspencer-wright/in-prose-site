@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      _test_consensus_seed: {
+        Row: {
+          isbn13: string
+          seeded_at: string
+          user_id: string
+        }
+        Insert: {
+          isbn13: string
+          seeded_at?: string
+          user_id: string
+        }
+        Update: {
+          isbn13?: string
+          seeded_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       activities: {
         Row: {
           activity_type: string | null
@@ -41,13 +59,6 @@ export type Database = {
             foreignKeyName: "activities_book_isbn13_fkey"
             columns: ["book_isbn13"]
             isOneToOne: false
-            referencedRelation: "book_stats_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activities_book_isbn13_fkey"
-            columns: ["book_isbn13"]
-            isOneToOne: false
             referencedRelation: "books"
             referencedColumns: ["isbn13"]
           },
@@ -56,13 +67,6 @@ export type Database = {
             columns: ["book_isbn13"]
             isOneToOne: false
             referencedRelation: "books_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activities_book_isbn13_fkey"
-            columns: ["book_isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_most_read"
             referencedColumns: ["isbn13"]
           },
           {
@@ -148,34 +152,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "activity_comments_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "book_stats_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_comments_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_comments_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_comments_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_most_read"
-            referencedColumns: ["isbn13"]
-          },
-          {
             foreignKeyName: "activity_comments_parent_id_fkey"
             columns: ["parent_id"]
             isOneToOne: false
@@ -212,36 +188,7 @@ export type Database = {
           isbn13?: string
           reactor_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "activity_reactions_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "book_stats_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_reactions_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_reactions_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "activity_reactions_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_most_read"
-            referencedColumns: ["isbn13"]
-          },
-        ]
+        Relationships: []
       }
       analytics_events: {
         Row: {
@@ -356,6 +303,30 @@ export type Database = {
         }
         Relationships: []
       }
+      app_config: {
+        Row: {
+          config_key: string
+          config_value: Json
+          created_at: string
+          id: number
+          updated_at: string
+        }
+        Insert: {
+          config_key: string
+          config_value: Json
+          created_at?: string
+          id?: number
+          updated_at?: string
+        }
+        Update: {
+          config_key?: string
+          config_value?: Json
+          created_at?: string
+          id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       authors: {
         Row: {
           created_at: string | null
@@ -408,13 +379,6 @@ export type Database = {
             foreignKeyName: "book_authors_isbn13_fkey"
             columns: ["isbn13"]
             isOneToOne: false
-            referencedRelation: "book_stats_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "book_authors_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
             referencedRelation: "books"
             referencedColumns: ["isbn13"]
           },
@@ -425,14 +389,86 @@ export type Database = {
             referencedRelation: "books_expanded"
             referencedColumns: ["isbn13"]
           },
+        ]
+      }
+      book_groups: {
+        Row: {
+          canonical_author: string
+          canonical_title: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          canonical_author: string
+          canonical_title: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          canonical_author?: string
+          canonical_title?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      book_isbn_groups: {
+        Row: {
+          created_at: string
+          group_id: string
+          isbn13: string
+        }
+        Insert: {
+          created_at?: string
+          group_id: string
+          isbn13: string
+        }
+        Update: {
+          created_at?: string
+          group_id?: string
+          isbn13?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "book_authors_isbn13_fkey"
-            columns: ["isbn13"]
+            foreignKeyName: "book_isbn_groups_group_id_fkey"
+            columns: ["group_id"]
             isOneToOne: false
-            referencedRelation: "books_most_read"
+            referencedRelation: "book_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "book_isbn_groups_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: true
+            referencedRelation: "books"
+            referencedColumns: ["isbn13"]
+          },
+          {
+            foreignKeyName: "book_isbn_groups_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: true
+            referencedRelation: "books_expanded"
             referencedColumns: ["isbn13"]
           },
         ]
+      }
+      book_lookup_failures: {
+        Row: {
+          failed_at: string
+          isbn13: string
+          retry_after: string
+        }
+        Insert: {
+          failed_at?: string
+          isbn13: string
+          retry_after?: string
+        }
+        Update: {
+          failed_at?: string
+          isbn13?: string
+          retry_after?: string
+        }
+        Relationships: []
       }
       book_popularity_stats: {
         Row: {
@@ -491,13 +527,6 @@ export type Database = {
             foreignKeyName: "book_subjects_isbn13_fkey"
             columns: ["isbn13"]
             isOneToOne: false
-            referencedRelation: "book_stats_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "book_subjects_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
             referencedRelation: "books"
             referencedColumns: ["isbn13"]
           },
@@ -506,13 +535,6 @@ export type Database = {
             columns: ["isbn13"]
             isOneToOne: false
             referencedRelation: "books_expanded"
-            referencedColumns: ["isbn13"]
-          },
-          {
-            foreignKeyName: "book_subjects_isbn13_fkey"
-            columns: ["isbn13"]
-            isOneToOne: false
-            referencedRelation: "books_most_read"
             referencedColumns: ["isbn13"]
           },
           {
@@ -652,6 +674,57 @@ export type Database = {
         }
         Relationships: []
       }
+      content_hidden_for_user: {
+        Row: {
+          content_id: string
+          content_type: Database["public"]["Enums"]["report_content_type"]
+          created_at: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          content_type: Database["public"]["Enums"]["report_content_type"]
+          created_at?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          content_type?: Database["public"]["Enums"]["report_content_type"]
+          created_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      content_reports: {
+        Row: {
+          content_id: string
+          content_type: Database["public"]["Enums"]["report_content_type"]
+          created_at: string
+          id: string
+          notes: string | null
+          reason: Database["public"]["Enums"]["report_reason_t"]
+          reporter_id: string
+        }
+        Insert: {
+          content_id: string
+          content_type: Database["public"]["Enums"]["report_content_type"]
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason: Database["public"]["Enums"]["report_reason_t"]
+          reporter_id: string
+        }
+        Update: {
+          content_id?: string
+          content_type?: Database["public"]["Enums"]["report_content_type"]
+          created_at?: string
+          id?: string
+          notes?: string | null
+          reason?: Database["public"]["Enums"]["report_reason_t"]
+          reporter_id?: string
+        }
+        Relationships: []
+      }
       device_tokens: {
         Row: {
           created_at: string | null
@@ -681,6 +754,97 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      enrichment_response_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          isbn13: string
+          question_key: string
+          template_version_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          isbn13: string
+          question_key: string
+          template_version_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          isbn13?: string
+          question_key?: string
+          template_version_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_response_events_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enrichment_responses: {
+        Row: {
+          answers: Json
+          answers_custom: Json
+          cards_answered: number
+          cards_shown: number
+          cards_skipped: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          isbn13: string
+          template_version_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          answers_custom?: Json
+          cards_answered?: number
+          cards_shown?: number
+          cards_skipped?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          isbn13: string
+          template_version_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          answers_custom?: Json
+          cards_answered?: number
+          cards_shown?: number
+          cards_skipped?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          isbn13?: string
+          template_version_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_responses_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       friend_invites: {
         Row: {
@@ -752,6 +916,98 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      habit_logs: {
+        Row: {
+          completed: boolean
+          created_at: string
+          habit_id: string
+          id: string
+          log_date: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          habit_id: string
+          id?: string
+          log_date: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          habit_id?: string
+          id?: string
+          log_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_logs_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          cadence: string
+          created_at: string
+          display_cadence: string
+          end_date: string | null
+          habit_type: string
+          id: string
+          is_active: boolean
+          is_home_featured: boolean
+          name: string
+          reminder_enabled: boolean
+          reminder_time: string | null
+          show_on_homepage: boolean
+          sort_order: number
+          start_date: string
+          streak_mode: string
+          user_id: string
+        }
+        Insert: {
+          cadence?: string
+          created_at?: string
+          display_cadence?: string
+          end_date?: string | null
+          habit_type: string
+          id?: string
+          is_active?: boolean
+          is_home_featured?: boolean
+          name: string
+          reminder_enabled?: boolean
+          reminder_time?: string | null
+          show_on_homepage?: boolean
+          sort_order?: number
+          start_date?: string
+          streak_mode?: string
+          user_id: string
+        }
+        Update: {
+          cadence?: string
+          created_at?: string
+          display_cadence?: string
+          end_date?: string | null
+          habit_type?: string
+          id?: string
+          is_active?: boolean
+          is_home_featured?: boolean
+          name?: string
+          reminder_enabled?: boolean
+          reminder_time?: string | null
+          show_on_homepage?: boolean
+          sort_order?: number
+          start_date?: string
+          streak_mode?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       notification_consent_log: {
         Row: {
@@ -882,6 +1138,51 @@ export type Database = {
         }
         Relationships: []
       }
+      posts: {
+        Row: {
+          created_at: string
+          edited_at: string | null
+          id: string
+          image_urls: string[]
+          mentions: string[]
+          quoted_activity_isbn13: string | null
+          quoted_activity_type: string | null
+          quoted_activity_user_id: string | null
+          tagged_books: string[]
+          text_content: string
+          user_id: string
+          visibility: string
+        }
+        Insert: {
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          image_urls?: string[]
+          mentions?: string[]
+          quoted_activity_isbn13?: string | null
+          quoted_activity_type?: string | null
+          quoted_activity_user_id?: string | null
+          tagged_books?: string[]
+          text_content: string
+          user_id: string
+          visibility?: string
+        }
+        Update: {
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+          image_urls?: string[]
+          mentions?: string[]
+          quoted_activity_isbn13?: string | null
+          quoted_activity_type?: string | null
+          quoted_activity_user_id?: string | null
+          tagged_books?: string[]
+          text_content?: string
+          user_id?: string
+          visibility?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -891,6 +1192,7 @@ export type Database = {
           display_name: string | null
           id: string
           is_admin: boolean
+          is_test_user: boolean
           joined_at: string
           phone_number: string | null
           updated_at: string
@@ -905,6 +1207,7 @@ export type Database = {
           display_name?: string | null
           id: string
           is_admin?: boolean
+          is_test_user?: boolean
           joined_at?: string
           phone_number?: string | null
           updated_at?: string
@@ -919,6 +1222,7 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_admin?: boolean
+          is_test_user?: boolean
           joined_at?: string
           phone_number?: string | null
           updated_at?: string
@@ -985,6 +1289,7 @@ export type Database = {
           anchor_weekday: number | null
           cadence_unit: string | null
           cadence_value: number
+          counts_rereads: boolean
           created_at: string
           deadline_at: string | null
           goal: number
@@ -992,6 +1297,7 @@ export type Database = {
           is_home_featured: boolean
           is_private: boolean
           kind: string
+          show_on_homepage: boolean
           started_at: string
           unit: string
           user_id: string
@@ -1002,6 +1308,7 @@ export type Database = {
           anchor_weekday?: number | null
           cadence_unit?: string | null
           cadence_value?: number
+          counts_rereads?: boolean
           created_at?: string
           deadline_at?: string | null
           goal: number
@@ -1009,6 +1316,7 @@ export type Database = {
           is_home_featured?: boolean
           is_private?: boolean
           kind: string
+          show_on_homepage?: boolean
           started_at?: string
           unit: string
           user_id: string
@@ -1019,6 +1327,7 @@ export type Database = {
           anchor_weekday?: number | null
           cadence_unit?: string | null
           cadence_value?: number
+          counts_rereads?: boolean
           created_at?: string
           deadline_at?: string | null
           goal?: number
@@ -1026,6 +1335,7 @@ export type Database = {
           is_home_featured?: boolean
           is_private?: boolean
           kind?: string
+          show_on_homepage?: boolean
           started_at?: string
           unit?: string
           user_id?: string
@@ -1083,6 +1393,54 @@ export type Database = {
         }
         Relationships: []
       }
+      status_updates: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          isbn13: string
+          message: string | null
+          status: string
+          user_id: string
+          visibility: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          isbn13: string
+          message?: string | null
+          status: string
+          user_id: string
+          visibility?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          isbn13?: string
+          message?: string | null
+          status?: string
+          user_id?: string
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_updates_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["isbn13"]
+          },
+          {
+            foreignKeyName: "status_updates_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: false
+            referencedRelation: "books_expanded"
+            referencedColumns: ["isbn13"]
+          },
+        ]
+      }
       subjects: {
         Row: {
           id: number
@@ -1097,6 +1455,295 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      survey_experiments: {
+        Row: {
+          ended_at: string | null
+          id: string
+          name: string
+          notes: string | null
+          rollout_strategy: string
+          started_at: string
+          template_id: string
+        }
+        Insert: {
+          ended_at?: string | null
+          id?: string
+          name: string
+          notes?: string | null
+          rollout_strategy: string
+          started_at?: string
+          template_id: string
+        }
+        Update: {
+          ended_at?: string | null
+          id?: string
+          name?: string
+          notes?: string | null
+          rollout_strategy?: string
+          started_at?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_experiments_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "survey_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_options: {
+        Row: {
+          id: string
+          label: string
+          metadata: Json
+          position: number
+          question_id: string
+          value: string
+        }
+        Insert: {
+          id?: string
+          label: string
+          metadata?: Json
+          position: number
+          question_id: string
+          value: string
+        }
+        Update: {
+          id?: string
+          label?: string
+          metadata?: Json
+          position?: number
+          question_id?: string
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_options_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "survey_questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_questions: {
+        Row: {
+          allow_custom: boolean
+          id: string
+          is_required: boolean
+          key: string
+          kind: string
+          metadata: Json
+          position: number
+          prompt: string
+          template_version_id: string
+        }
+        Insert: {
+          allow_custom?: boolean
+          id?: string
+          is_required?: boolean
+          key: string
+          kind: string
+          metadata?: Json
+          position: number
+          prompt: string
+          template_version_id: string
+        }
+        Update: {
+          allow_custom?: boolean
+          id?: string
+          is_required?: boolean
+          key?: string
+          kind?: string
+          metadata?: Json
+          position?: number
+          prompt?: string
+          template_version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_questions_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_targeting_rules: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          notes: string | null
+          priority: number
+          question_id: string | null
+          targets: Json
+          template_version_id: string | null
+        }
+        Insert: {
+          action?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority?: number
+          question_id?: string | null
+          targets?: Json
+          template_version_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          priority?: number
+          question_id?: string | null
+          targets?: Json
+          template_version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_targeting_rules_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "survey_questions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "survey_targeting_rules_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_template_versions: {
+        Row: {
+          created_at: string
+          experiment_id: string | null
+          id: string
+          notes: string | null
+          template_id: string
+          variant_key: string | null
+          variant_weight: number
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          notes?: string | null
+          template_id: string
+          variant_key?: string | null
+          variant_weight?: number
+          version: number
+        }
+        Update: {
+          created_at?: string
+          experiment_id?: string | null
+          id?: string
+          notes?: string | null
+          template_id?: string
+          variant_key?: string | null
+          variant_weight?: number
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_template_versions_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "survey_experiments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "survey_template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "survey_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      survey_templates: {
+        Row: {
+          active_version_id: string | null
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          active_version_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          active_version_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "survey_templates_active_version_fk"
+            columns: ["active_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      target_met_events: {
+        Row: {
+          actual: number
+          created_at: string
+          goal: number
+          id: string
+          period_label: string
+          target_id: string
+          unit: string
+          user_id: string
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          actual: number
+          created_at?: string
+          goal: number
+          id?: string
+          period_label: string
+          target_id: string
+          unit: string
+          user_id: string
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          actual?: number
+          created_at?: string
+          goal?: number
+          id?: string
+          period_label?: string
+          target_id?: string
+          unit?: string
+          user_id?: string
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "target_met_events_target_id_fkey"
+            columns: ["target_id"]
+            isOneToOne: false
+            referencedRelation: "reading_targets"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_blocks: {
         Row: {
@@ -1116,14 +1763,82 @@ export type Database = {
         }
         Relationships: []
       }
-      user_books: {
+      user_book_reads: {
         Row: {
           created_at: string
           finished_at: string | null
+          id: string
+          isbn13: string
+          rating: number | null
+          read_number: number
+          review: string | null
+          review_spoiler: boolean
+          reviewed_at: string | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          isbn13: string
+          rating?: number | null
+          read_number?: number
+          review?: string | null
+          review_spoiler?: boolean
+          reviewed_at?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          isbn13?: string
+          rating?: number | null
+          read_number?: number
+          review?: string | null
+          review_spoiler?: boolean
+          reviewed_at?: string | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_book_reads_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["isbn13"]
+          },
+          {
+            foreignKeyName: "user_book_reads_isbn13_fkey"
+            columns: ["isbn13"]
+            isOneToOne: false
+            referencedRelation: "books_expanded"
+            referencedColumns: ["isbn13"]
+          },
+        ]
+      }
+      user_books: {
+        Row: {
+          active_read_id: string | null
+          created_at: string
+          finished_at: string | null
+          format: string | null
+          group_id: string | null
           isbn13: string
           ownership: Database["public"]["Enums"]["ownership_t"]
           rating: number | null
           review: string | null
+          review_spoiler: boolean
+          reviewed_at: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["read_status_t"]
           updated_at: string
@@ -1131,12 +1846,17 @@ export type Database = {
           visibility: string | null
         }
         Insert: {
+          active_read_id?: string | null
           created_at?: string
           finished_at?: string | null
+          format?: string | null
+          group_id?: string | null
           isbn13: string
           ownership?: Database["public"]["Enums"]["ownership_t"]
           rating?: number | null
           review?: string | null
+          review_spoiler?: boolean
+          reviewed_at?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["read_status_t"]
           updated_at?: string
@@ -1144,19 +1864,39 @@ export type Database = {
           visibility?: string | null
         }
         Update: {
+          active_read_id?: string | null
           created_at?: string
           finished_at?: string | null
+          format?: string | null
+          group_id?: string | null
           isbn13?: string
           ownership?: Database["public"]["Enums"]["ownership_t"]
           rating?: number | null
           review?: string | null
+          review_spoiler?: boolean
+          reviewed_at?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["read_status_t"]
           updated_at?: string
           user_id?: string
           visibility?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_books_active_read_id_fkey"
+            columns: ["active_read_id"]
+            isOneToOne: false
+            referencedRelation: "user_book_reads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_books_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "book_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_favourites: {
         Row: {
@@ -1184,27 +1924,40 @@ export type Database = {
           },
         ]
       }
+      user_segment_assignments: {
+        Row: {
+          created_at: string
+          segment: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          segment: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          segment?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
-      book_stats_expanded: {
+      book_enrichment_consensus: {
         Row: {
-          avg_rating: number | null
-          date_published: string | null
-          image: string | null
           isbn13: string | null
-          language: string | null
-          num_reviews: number | null
-          pages: number | null
-          title: string | null
+          question_consensus: Json | null
+          response_count: number | null
         }
         Relationships: []
       }
       books_expanded: {
         Row: {
-          authors: string[] | null
-          community_rating: number | null
+          all_author_names: string[] | null
           date_published: string | null
           first_author_name: string | null
+          first_author_sort_name: string | null
           genres: string[] | null
           image: string | null
           image_original: string | null
@@ -1213,35 +1966,143 @@ export type Database = {
           pages: number | null
           pub_year: number | null
           publisher: string | null
-          ratings_count: number | null
-          subtitle: string | null
           synopsis: string | null
           title: string | null
+        }
+        Insert: {
+          all_author_names?: never
+          date_published?: string | null
+          first_author_name?: never
+          first_author_sort_name?: never
+          genres?: never
+          image?: string | null
+          image_original?: string | null
+          isbn13?: string | null
+          language?: string | null
+          pages?: number | null
+          pub_year?: never
+          publisher?: string | null
+          synopsis?: string | null
+          title?: string | null
+        }
+        Update: {
+          all_author_names?: never
+          date_published?: string | null
+          first_author_name?: never
+          first_author_sort_name?: never
+          genres?: never
+          image?: string | null
+          image_original?: string | null
+          isbn13?: string | null
+          language?: string | null
+          pages?: number | null
+          pub_year?: never
+          publisher?: string | null
+          synopsis?: string | null
+          title?: string | null
         }
         Relationships: []
       }
-      books_most_read: {
+      enrichment_completion_stats: {
         Row: {
-          authors: string[] | null
-          date_published: string | null
-          finished_users: number | null
-          first_author_name: string | null
-          genres: string[] | null
-          image: string | null
-          image_original: string | null
-          isbn13: string | null
-          language: string | null
-          pages: number | null
-          pub_year: number | null
-          publisher: string | null
-          subtitle: string | null
-          synopsis: string | null
-          title: string | null
-          users_with_book: number | null
+          avg_cards_answered: number | null
+          avg_cards_shown: number | null
+          avg_cards_skipped: number | null
+          completed_responses: number | null
+          completion_rate_pct: number | null
+          experiment_id: string | null
+          incomplete_responses: number | null
+          template_version_id: string | null
+          total_responses: number | null
+          variant_key: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_responses_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "survey_template_versions_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "survey_experiments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      enrichment_per_card_dropoff: {
+        Row: {
+          abandoned_count: number | null
+          abandoned_rate_pct: number | null
+          answered_count: number | null
+          experiment_id: string | null
+          question_key: string | null
+          skipped_count: number | null
+          template_version_id: string | null
+          variant_key: string | null
+          viewed_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrichment_response_events_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "survey_template_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "survey_template_versions_experiment_id_fkey"
+            columns: ["experiment_id"]
+            isOneToOne: false
+            referencedRelation: "survey_experiments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_books_expanded: {
+        Row: {
+          avg_rating: number | null
+          cover_url: string | null
+          created_at: string | null
+          date_published: string | null
+          finished_at: string | null
+          first_author_name: string | null
+          first_author_sort_name: string | null
+          format: string | null
+          genres: string[] | null
+          group_id: string | null
+          image_original: string | null
+          isbn13: string | null
+          language: string | null
+          ownership: Database["public"]["Enums"]["ownership_t"] | null
+          pages: number | null
+          pub_year: number | null
+          publisher: string | null
+          rating: number | null
+          review: string | null
+          review_spoiler: boolean | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["read_status_t"] | null
+          synopsis: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string | null
+          visibility: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_books_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "book_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_books_expanded_all: {
         Row: {
           all_author_names: string[] | null
           avg_rating: number | null
@@ -1251,7 +2112,9 @@ export type Database = {
           finished_at: string | null
           first_author_name: string | null
           first_author_sort_name: string | null
+          format: string | null
           genres: string[] | null
+          group_id: string | null
           image_original: string | null
           isbn13: string | null
           language: string | null
@@ -1261,6 +2124,7 @@ export type Database = {
           publisher: string | null
           rating: number | null
           review: string | null
+          review_spoiler: boolean | null
           started_at: string | null
           status: Database["public"]["Enums"]["read_status_t"] | null
           synopsis: string | null
@@ -1269,38 +2133,15 @@ export type Database = {
           user_id: string | null
           visibility: string | null
         }
-        Relationships: []
-      }
-      user_books_expanded_all: {
-        Row: {
-          authors: string[] | null
-          avg_rating: number | null
-          cover_url: string | null
-          created_at: string | null
-          date_published: string | null
-          finished_at: string | null
-          first_author_name: string | null
-          first_author_sort_name: string | null
-          genres: string[] | null
-          image_original: string | null
-          isbn13: string | null
-          language: string | null
-          num_reviews: number | null
-          ownership: Database["public"]["Enums"]["ownership_t"] | null
-          pages: number | null
-          pub_year: number | null
-          publisher: string | null
-          rating: number | null
-          review: string | null
-          started_at: string | null
-          status: Database["public"]["Enums"]["read_status_t"] | null
-          synopsis: string | null
-          title: string | null
-          updated_at: string | null
-          user_id: string | null
-          visibility: string | null
-        }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_books_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "book_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Functions: {
@@ -1382,10 +2223,34 @@ export type Database = {
           title: string
         }[]
       }
+      book_search_with_enrichment: {
+        Args: { q: string }
+        Returns: {
+          author: string
+          cover_url: string
+          enrichment: Json
+          isbn13: string
+          pub_year: number
+          title: string
+        }[]
+      }
       check_username_available: { Args: { p_username: string }; Returns: Json }
       clear_user_favourite: { Args: { p_position: number }; Returns: undefined }
       compute_sort_name: { Args: { author_name: string }; Returns: string }
       create_friend_request: { Args: { target_user_id: string }; Returns: Json }
+      create_post: {
+        Args: {
+          p_image_urls?: string[]
+          p_mentions?: string[]
+          p_quoted_activity_isbn13?: string
+          p_quoted_activity_type?: string
+          p_quoted_activity_user_id?: string
+          p_tagged_books?: string[]
+          p_text_content: string
+          p_visibility?: string
+        }
+        Returns: string
+      }
       delete_activity: {
         Args: { p_activity_type: string; p_isbn13: string }
         Returns: undefined
@@ -1394,6 +2259,8 @@ export type Database = {
         Args: { p_comment_id: string }
         Returns: boolean
       }
+      delete_post: { Args: { p_post_id: string }; Returns: undefined }
+      delete_read: { Args: { p_read_id: string }; Returns: undefined }
       edit_activity_comment: {
         Args: {
           p_body: string
@@ -1417,6 +2284,15 @@ export type Database = {
           parent_id: string
           tagged_books: string[]
         }[]
+      }
+      edit_post: {
+        Args: {
+          p_mentions?: string[]
+          p_post_id: string
+          p_tagged_books?: string[]
+          p_text_content: string
+        }
+        Returns: undefined
       }
       end_analytics_session: {
         Args: { p_session_id: string }
@@ -1458,6 +2334,10 @@ export type Database = {
         Args: { p_campaign_id: string }
         Returns: Json
       }
+      get_active_survey_template: {
+        Args: { p_name: string; p_user_id?: string }
+        Returns: Json
+      }
       get_activity_comments: {
         Args: {
           p_activity_type: string
@@ -1486,10 +2366,34 @@ export type Database = {
       get_activity_feed: {
         Args: {
           p_activity_type?: string
+          p_include_test_users?: boolean
           p_limit?: number
           p_offset?: number
           p_user_id?: string
         }
+        Returns: {
+          activity_type: string
+          avatar_url: string
+          badge_type: string
+          book_image: string
+          book_isbn13: string
+          book_title: string
+          created_at: string
+          display_name: string
+          id: string
+          ownership: string
+          rating: number
+          review: string
+          review_spoiler: boolean
+          status: string
+          status_image_url: string
+          status_message: string
+          user_id: string
+          username: string
+        }[]
+      }
+      get_book_activity: {
+        Args: { p_isbn13: string; p_limit?: number; p_offset?: number }
         Returns: {
           activity_type: string
           avatar_url: string
@@ -1502,15 +2406,35 @@ export type Database = {
           ownership: string
           rating: number
           review: string
+          review_spoiler: boolean
           status: string
+          status_image_url: string
+          status_message: string
           user_id: string
           username: string
+        }[]
+      }
+      get_book_stats: {
+        Args: { p_isbn13: string }
+        Returns: {
+          avg_rating: number
+          isbn13: string
+          num_reviews: number
+          title: string
+        }[]
+      }
+      get_book_stats_batch: {
+        Args: { p_isbn13s: string[] }
+        Returns: {
+          avg_rating: number
+          isbn13: string
+          num_reviews: number
+          title: string
         }[]
       }
       get_books_in_common: {
         Args: { friend_id: string }
         Returns: {
-          all_author_names: string[]
           cover_url: string
           first_author_name: string
           friend_finished_at: string
@@ -1518,6 +2442,7 @@ export type Database = {
           friend_review: string
           friend_started_at: string
           friend_status: string
+          group_id: string
           isbn13: string
           title: string
           your_finished_at: string
@@ -1540,6 +2465,32 @@ export type Database = {
           isbn13: string
         }[]
       }
+      get_daily_sign_in_summary: {
+        Args: never
+        Returns: {
+          sign_in_count: number
+          user_id: string
+        }[]
+      }
+      get_edge_function_url: {
+        Args: { function_name: string }
+        Returns: string
+      }
+      get_expanded_book_consensus: {
+        Args: { p_isbn13: string }
+        Returns: {
+          isbn13: string
+          question_histograms: Json
+          rating_avg: number
+          rating_count: number
+          rating_distribution: Json
+          response_count: number
+        }[]
+      }
+      get_finished_reads_count: {
+        Args: { p_since: string; p_until: string; p_user_id: string }
+        Returns: number
+      }
       get_friend_book_detail: {
         Args: { friend_id: string; isbn13_input: string }
         Returns: {
@@ -1560,10 +2511,10 @@ export type Database = {
           your_status: string
         }[]
       }
-      get_friend_library: {
-        Args: { friend_id: string }
+      get_friend_book_meta: {
+        Args: { p_friend_id: string; p_isbn13: string }
         Returns: {
-          authors: string[] | null
+          all_author_names: string[] | null
           avg_rating: number | null
           cover_url: string | null
           created_at: string | null
@@ -1571,17 +2522,68 @@ export type Database = {
           finished_at: string | null
           first_author_name: string | null
           first_author_sort_name: string | null
+          format: string | null
           genres: string[] | null
+          group_id: string | null
           image_original: string | null
           isbn13: string | null
           language: string | null
-          num_reviews: number | null
           ownership: Database["public"]["Enums"]["ownership_t"] | null
           pages: number | null
           pub_year: number | null
           publisher: string | null
           rating: number | null
           review: string | null
+          review_spoiler: boolean | null
+          started_at: string | null
+          status: Database["public"]["Enums"]["read_status_t"] | null
+          synopsis: string | null
+          title: string | null
+          updated_at: string | null
+          user_id: string | null
+          visibility: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "user_books_expanded_all"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_friend_enrichment_for_isbns: {
+        Args: { p_isbn13s: string[] }
+        Returns: {
+          answers: Json
+          display_name: string
+          isbn13: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
+      get_friend_library: {
+        Args: { friend_id: string }
+        Returns: {
+          all_author_names: string[] | null
+          avg_rating: number | null
+          cover_url: string | null
+          created_at: string | null
+          date_published: string | null
+          finished_at: string | null
+          first_author_name: string | null
+          first_author_sort_name: string | null
+          format: string | null
+          genres: string[] | null
+          group_id: string | null
+          image_original: string | null
+          isbn13: string | null
+          language: string | null
+          ownership: Database["public"]["Enums"]["ownership_t"] | null
+          pages: number | null
+          pub_year: number | null
+          publisher: string | null
+          rating: number | null
+          review: string | null
+          review_spoiler: boolean | null
           started_at: string | null
           status: Database["public"]["Enums"]["read_status_t"] | null
           synopsis: string | null
@@ -1598,9 +2600,10 @@ export type Database = {
         }
       }
       get_friend_suggestions: {
-        Args: { p_limit?: number }
+        Args: { p_include_test_users?: boolean; p_limit?: number }
         Returns: {
           avatar_url: string
+          badge_type: string
           display_name: string
           mutual_friends: number
           reason: string
@@ -1609,11 +2612,37 @@ export type Database = {
           username: string
         }[]
       }
+      get_friend_target_history: {
+        Args: { friend_id: string }
+        Returns: Database["public"]["CompositeTypes"]["friend_target_period"][]
+        SetofOptions: {
+          from: "*"
+          to: "friend_target_period"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      get_friend_target_progress: {
+        Args: { friend_id: string }
+        Returns: Database["public"]["CompositeTypes"]["friend_target_progress"][]
+        SetofOptions: {
+          from: "*"
+          to: "friend_target_progress"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_friends_activity_feed: {
-        Args: { p_activity_type?: string; p_limit?: number; p_offset?: number }
+        Args: {
+          p_activity_type?: string
+          p_include_test_users?: boolean
+          p_limit?: number
+          p_offset?: number
+        }
         Returns: {
           activity_type: string
           avatar_url: string
+          badge_type: string
           book_image: string
           book_isbn13: string
           book_title: string
@@ -1623,7 +2652,10 @@ export type Database = {
           ownership: string
           rating: number
           review: string
+          review_spoiler: boolean
           status: string
+          status_image_url: string
+          status_message: string
           user_id: string
           username: string
         }[]
@@ -1646,29 +2678,26 @@ export type Database = {
           user_id: string
         }[]
       }
-      get_friends_with_book:
-        | {
-            Args: { p_exclude_user_id?: string; p_isbn13: string }
-            Returns: {
-              avatar_url: string
-              created_at: string
-              display_name: string
-              ownership: string
-              rating: number
-              review: string
-              status: string
-              user_id: string
-            }[]
-          }
-        | {
-            Args: {
-              p_exclude_user_id?: string
-              p_isbn13: string
-              p_limit?: number
-              p_offset?: number
-            }
-            Returns: Json[]
-          }
+      get_friends_with_book: {
+        Args: {
+          p_exclude_user_id?: string
+          p_isbn13: string
+          p_limit?: number
+          p_offset?: number
+        }
+        Returns: {
+          avatar_url: string
+          created_at: string
+          display_name: string
+          ownership: string
+          rating: number
+          review: string
+          review_spoiler: boolean
+          status: string
+          user_id: string
+        }[]
+      }
+      get_habit_streaks: { Args: { p_user_id: string }; Returns: Json }
       get_notification_preferences: {
         Args: never
         Returns: {
@@ -1697,6 +2726,61 @@ export type Database = {
           type: string
         }[]
       }
+      get_popular_books: {
+        Args: { p_limit?: number }
+        Returns: {
+          date_published: string
+          finished_users: number
+          first_author_name: string
+          image: string
+          isbn13: string
+          pub_year: number
+          title: string
+          users_with_book: number
+        }[]
+      }
+      get_popular_books_with_enrichment: {
+        Args: { p_limit?: number }
+        Returns: {
+          date_published: string
+          enrichment: Json
+          finished_users: number
+          first_author_name: string
+          image: string
+          isbn13: string
+          pub_year: number
+          title: string
+          users_with_book: number
+        }[]
+      }
+      get_post_detail: {
+        Args: { p_post_id: string }
+        Returns: {
+          avatar_url: string
+          badge_type: string
+          created_at: string
+          display_name: string
+          edited_at: string
+          id: string
+          image_urls: string[]
+          mentions: string[]
+          quoted_activity_isbn13: string
+          quoted_activity_type: string
+          quoted_activity_user_id: string
+          quoted_avatar_url: string
+          quoted_book_image: string
+          quoted_book_title: string
+          quoted_display_name: string
+          quoted_post_image: string
+          quoted_post_text: string
+          quoted_rating: number
+          tagged_books: string[]
+          text_content: string
+          user_id: string
+          username: string
+          visibility: string
+        }[]
+      }
       get_profile: {
         Args: { target_user_id: string }
         Returns: {
@@ -1706,6 +2790,18 @@ export type Database = {
           id: string
           joined_at: string
           phone_number: string
+        }[]
+      }
+      get_public_reviews_for_book: {
+        Args: { p_isbn13: string; p_limit?: number; p_offset?: number }
+        Returns: {
+          avatar_url: string
+          created_at: string
+          display_name: string
+          rating: number
+          review: string
+          review_spoiler: boolean
+          user_id: string
         }[]
       }
       get_reactions_detail_for_activity: {
@@ -1756,6 +2852,20 @@ export type Database = {
           reacted_by_me: boolean
         }[]
       }
+      get_read_history: {
+        Args: { p_isbn13: string; p_user_id?: string }
+        Returns: {
+          created_at: string
+          finished_at: string
+          id: string
+          rating: number
+          read_number: number
+          review: string
+          review_spoiler: boolean
+          started_at: string
+          status: string
+        }[]
+      }
       get_unread_notification_count: { Args: never; Returns: number }
       get_user_favourites: {
         Args: { p_user_id: string }
@@ -1764,9 +2874,24 @@ export type Database = {
           position: number
         }[]
       }
+      insert_status_update: {
+        Args: {
+          p_image_url?: string
+          p_isbn13: string
+          p_message?: string
+          p_status: string
+          p_visibility?: string
+        }
+        Returns: string
+      }
+      is_in_segment: {
+        Args: { p_segment: string; p_user_id: string }
+        Returns: boolean
+      }
       is_username_reserved: { Args: { p_username: string }; Returns: boolean }
       is_valid_isbn10: { Args: { in_raw: string }; Returns: boolean }
       mark_notifications_read: { Args: never; Returns: undefined }
+      normalise_for_grouping: { Args: { val: string }; Returns: string }
       normalize_genre_name: { Args: { raw_name: string }; Returns: string }
       normalize_isbn: { Args: { in_raw: string }; Returns: string }
       notify_library_add_from_post: {
@@ -1793,6 +2918,18 @@ export type Database = {
           title: string
         }[]
       }
+      post_target_met: {
+        Args: {
+          p_actual: number
+          p_goal: number
+          p_period_label: string
+          p_target_id: string
+          p_unit: string
+          p_window_end: string
+          p_window_start: string
+        }
+        Returns: string
+      }
       record_analytics_event: {
         Args: {
           p_action: string
@@ -1813,9 +2950,26 @@ export type Database = {
         Returns: string
       }
       remove_friend: { Args: { p_friend_id: string }; Returns: undefined }
+      report_content: {
+        Args: {
+          p_content_id: string
+          p_content_type: string
+          p_notes?: string
+          p_reason: string
+        }
+        Returns: undefined
+      }
+      resolve_survey_template: {
+        Args: { p_isbn13?: string; p_name: string; p_user_id?: string }
+        Returns: Json
+      }
       respond_to_friend_request: {
         Args: { friendship_id: string; response: string }
         Returns: Json
+      }
+      rule_targets_match: {
+        Args: { p_isbn13: string; p_targets: Json; p_user_id: string }
+        Returns: boolean
       }
       search_books_for_tag: {
         Args: { p_query?: string }
@@ -1836,9 +2990,15 @@ export type Database = {
         }[]
       }
       search_users: {
-        Args: { p_limit?: number; p_offset?: number; p_query: string }
+        Args: {
+          p_include_test_users?: boolean
+          p_limit?: number
+          p_offset?: number
+          p_query: string
+        }
         Returns: {
           avatar_url: string
+          badge_type: string
           display_name: string
           friendship_status: string
           user_id: string
@@ -1860,11 +3020,21 @@ export type Database = {
         }
         Returns: string
       }
+      start_new_read: { Args: { p_isbn13: string }; Returns: string }
       subjects_for_book: {
         Args: { isbn13_in: string }
         Returns: {
           name: string
         }[]
+      }
+      target_matches: {
+        Args: {
+          p_isbn13: string
+          p_type: string
+          p_user_id: string
+          p_value: string
+        }
+        Returns: boolean
       }
       toggle_activity_reaction: {
         Args: {
@@ -1961,9 +3131,24 @@ export type Database = {
     Enums: {
       ownership_t: "owned" | "borrowed" | "not_owned"
       read_status_t: "to_read" | "reading" | "finished" | "dnf"
+      report_content_type: "post" | "comment" | "review" | "profile"
+      report_reason_t:
+        | "spam"
+        | "harassment"
+        | "inappropriate"
+        | "misinformation"
     }
     CompositeTypes: {
-      [_ in never]: never
+      friend_target_period: {
+        target_id: string | null
+        period_start: string | null
+        period_end: string | null
+        progress: number | null
+      }
+      friend_target_progress: {
+        target_id: string | null
+        progress: number | null
+      }
     }
   }
 }
@@ -2090,6 +3275,14 @@ export const Constants = {
     Enums: {
       ownership_t: ["owned", "borrowed", "not_owned"],
       read_status_t: ["to_read", "reading", "finished", "dnf"],
+      report_content_type: ["post", "comment", "review", "profile"],
+      report_reason_t: [
+        "spam",
+        "harassment",
+        "inappropriate",
+        "misinformation",
+      ],
     },
   },
 } as const
+
