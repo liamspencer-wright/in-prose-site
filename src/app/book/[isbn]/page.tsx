@@ -58,6 +58,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
+    itunes: {
+      appId: "6740043848",
+      appArgument: `inprose://book/${isbn}`,
+    },
     openGraph: {
       title,
       description,
