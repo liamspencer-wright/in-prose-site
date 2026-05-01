@@ -56,6 +56,7 @@ type ExistingBook = {
 };
 
 type Step =
+  | "provider"
   | "upload"
   | "mapping"
   | "validate"
@@ -75,6 +76,73 @@ type ImportResult = {
 
 type RatingScale = "0-5" | "0-10" | "0-100";
 type DateFormat = "auto" | "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
+
+type Provider = "goodreads" | "storygraph" | "fable" | "audible" | "generic";
+type FieldKey =
+  | "isbn13"
+  | "title"
+  | "status"
+  | "rating"
+  | "started_at"
+  | "finished_at"
+  | "review";
+
+/* ── Provider presets ── */
+
+const PROVIDER_PRESETS: Record<
+  Provider,
+  {
+    label: string;
+    columns: Partial<Record<FieldKey, string>>;
+    ratingScale: RatingScale;
+    noIsbn?: boolean;
+  }
+> = {
+  goodreads: {
+    label: "Goodreads",
+    columns: {
+      isbn13: "ISBN13",
+      title: "Title",
+      status: "Exclusive Shelf",
+      rating: "My Rating",
+      started_at: "Date Started",
+      finished_at: "Date Read",
+      review: "My Review",
+    },
+    ratingScale: "0-5",
+  },
+  storygraph: {
+    label: "StoryGraph",
+    columns: {
+      isbn13: "ISBN/UID",
+      title: "Title",
+      status: "Read Status",
+      rating: "Star Rating",
+      started_at: "Date Started",
+      finished_at: "Date Finished",
+      review: "Review",
+    },
+    ratingScale: "0-5",
+  },
+  fable: {
+    label: "Fable",
+    columns: {},
+    ratingScale: "0-5",
+  },
+  audible: {
+    label: "Audible",
+    columns: {
+      status: "Status",
+    },
+    ratingScale: "0-5",
+    noIsbn: true,
+  },
+  generic: {
+    label: "Generic CSV",
+    columns: {},
+    ratingScale: "0-5",
+  },
+};
 
 /* ── Column mapping patterns ── */
 
@@ -272,6 +340,10 @@ function normaliseDate(raw: string | null, format: DateFormat): string | null {
 
 /* ── ISBN cleaning ── */
 
+function stripGoodreadsIsbn(value: string): string {
+  return value.replace(/^="?(.*?)"?$/, "$1");
+}
+
 function cleanIsbn(raw: string | null): string | null {
   if (!raw) return null;
   const cleaned = raw.replace(/[\s"'=-]/g, "");
@@ -284,7 +356,8 @@ function cleanIsbn(raw: string | null): string | null {
 
 export default function ImportPage() {
   const { user } = useAuth();
-  const [step, setStep] = useState<Step>("upload");
+  const [step, setStep] = useState<Step>("provider");
+  const [selectedProvider, setSelectedProvider] = useState<Provider>("generic");
   const [rawHeaders, setRawHeaders] = useState<string[]>([]);
   const [rawRows, setRawRows] = useState<string[][]>([]);
   const [fieldMap, setFieldMap] = useState<Record<string, number | null>>({});
@@ -392,6 +465,17 @@ export default function ImportPage() {
               }
             }
           });
+
+          // Override auto-detection with provider preset column names
+          if (selectedProvider !== "generic") {
+            const preset = PROVIDER_PRESETS[selectedProvider];
+            for (const [field, colName] of Object.entries(preset.columns)) {
+              if (!colName) continue;
+              const colIdx = headers.findIndex((h) => h.trim() === colName);
+              if (colIdx !== -1) autoMap[field] = colIdx;
+            }
+          }
+
           setFieldMap(autoMap);
           setStep("mapping");
         },
@@ -400,13 +484,14 @@ export default function ImportPage() {
         },
       });
     },
-    []
+    [selectedProvider]
   );
 
   /* ── Mapping → Validate ── */
 
   const handleMappingConfirm = useCallback(() => {
-    if (fieldMap.isbn13 === null || fieldMap.isbn13 === undefined) {
+    const noIsbn = PROVIDER_PRESETS[selectedProvider]?.noIsbn;
+    if (!noIsbn && (fieldMap.isbn13 === null || fieldMap.isbn13 === undefined)) {
       setError("You must map a CSV column to ISBN.");
       return;
     }
@@ -447,7 +532,7 @@ export default function ImportPage() {
     }
 
     setStep("validate");
-  }, [fieldMap, rawRows]);
+  }, [fieldMap, rawRows, selectedProvider]);
 
   /* ── Validate → Fetch ── */
 
@@ -466,7 +551,12 @@ export default function ImportPage() {
     let id = 0;
 
     for (const row of rawRows) {
-      const isbn = cleanIsbn(row[isbnIdx] ?? null);
+      const rawIsbnValue = row[isbnIdx] ?? null;
+      const strippedIsbn =
+        selectedProvider === "goodreads" && rawIsbnValue
+          ? stripGoodreadsIsbn(rawIsbnValue)
+          : rawIsbnValue;
+      const isbn = cleanIsbn(strippedIsbn);
       if (!isbn) continue;
 
       const csvRawRating = ratingIdx >= 0 ? (row[ratingIdx] ?? null) : null;
@@ -512,7 +602,11 @@ export default function ImportPage() {
     }
 
     if (parsed.length === 0) {
-      setError("No valid ISBNs found in the CSV.");
+      setError(
+        PROVIDER_PRESETS[selectedProvider]?.noIsbn
+          ? "No valid ISBNs found. Audible exports use ASINs which cannot be matched to our catalogue."
+          : "No valid ISBNs found in the CSV."
+      );
       return;
     }
 
@@ -526,7 +620,7 @@ export default function ImportPage() {
     setRows(deduped);
     setStep("fetching");
     fetchMetadata(deduped);
-  }, [fieldMap, rawRows, ratingScale, dateFormat, statusMap]);
+  }, [fieldMap, rawRows, ratingScale, dateFormat, statusMap, selectedProvider]);
 
   /* ── Metadata fetch ── */
 
@@ -904,7 +998,8 @@ export default function ImportPage() {
   }, [rows]);
 
   const resetAll = useCallback(() => {
-    setStep("upload");
+    setStep("provider");
+    setSelectedProvider("generic");
     setRows([]);
     setRawHeaders([]);
     setRawRows([]);
@@ -942,8 +1037,22 @@ export default function ImportPage() {
         </div>
       )}
 
+      {step === "provider" && (
+        <ProviderStep
+          onSelect={(p) => {
+            setSelectedProvider(p);
+            setStep("upload");
+          }}
+        />
+      )}
+
       {step === "upload" && (
-        <UploadStep fileRef={fileRef} onFile={handleFile} />
+        <UploadStep
+          fileRef={fileRef}
+          onFile={handleFile}
+          provider={selectedProvider}
+          onBack={() => setStep("provider")}
+        />
       )}
 
       {step === "mapping" && (
@@ -951,6 +1060,7 @@ export default function ImportPage() {
           headers={rawHeaders}
           sampleRows={rawRows.slice(0, 3)}
           fieldMap={fieldMap}
+          selectedProvider={selectedProvider}
           onChange={(field, colIdx) =>
             setFieldMap((prev) => ({ ...prev, [field]: colIdx }))
           }
@@ -1076,6 +1186,7 @@ export default function ImportPage() {
 /* ── Step Indicator ── */
 
 const STEP_GROUPS = [
+  { label: "Source", keys: ["provider"] },
   { label: "Upload", keys: ["upload"] },
   { label: "Map columns", keys: ["mapping"] },
   { label: "Validate", keys: ["validate"] },
@@ -1122,74 +1233,141 @@ function StepIndicator({ current }: { current: Step }) {
   );
 }
 
+/* ── Provider Step ── */
+
+const PROVIDER_ORDER: Provider[] = [
+  "goodreads",
+  "storygraph",
+  "fable",
+  "audible",
+  "generic",
+];
+
+function ProviderStep({ onSelect }: { onSelect: (p: Provider) => void }) {
+  return (
+    <div>
+      <p className="mb-6 text-sm text-text-muted">
+        Select where your CSV export is from. We&apos;ll pre-fill the column
+        mapping automatically.
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+        {PROVIDER_ORDER.map((p) => {
+          const preset = PROVIDER_PRESETS[p];
+          return (
+            <button
+              key={p}
+              onClick={() => onSelect(p)}
+              className="flex flex-col items-center justify-center gap-2 rounded-(--radius-card) border border-border bg-bg-card px-4 py-6 text-center transition-colors hover:border-accent hover:bg-accent/5 cursor-pointer"
+            >
+              <span className="text-sm font-semibold">{preset.label}</span>
+              {p === "generic" && (
+                <span className="text-xs text-text-muted">Auto-detect</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-4 text-xs text-text-subtle">
+        Not sure? Choose &ldquo;Generic CSV&rdquo; and we&apos;ll detect
+        columns automatically.
+      </p>
+    </div>
+  );
+}
+
 /* ── Upload Step ── */
 
 function UploadStep({
   fileRef,
   onFile,
+  provider,
+  onBack,
 }: {
   fileRef: React.RefObject<HTMLInputElement | null>;
   onFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  provider: Provider;
+  onBack: () => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const providerLabel =
+    provider !== "generic" ? PROVIDER_PRESETS[provider].label : null;
 
   return (
-    <div
-      className={`flex flex-col items-center justify-center rounded-(--radius-card) border-2 border-dashed px-8 py-16 text-center transition-colors ${
-        dragOver ? "border-accent bg-accent/5" : "border-border"
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setDragOver(true);
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        const file = e.dataTransfer.files[0];
-        if (file && fileRef.current) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          fileRef.current.files = dt.files;
-          fileRef.current.dispatchEvent(
-            new Event("change", { bubbles: true })
-          );
-        }
-      }}
-    >
-      <svg
-        className="mb-4 h-12 w-12 text-text-subtle"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
+    <div>
+      {provider === "audible" && (
+        <div className="mb-6 rounded-(--radius-card) border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-semibold">Heads up:</span> Audible exports use
+          ASINs, not ISBNs. Most books may not be found in our catalogue.
+        </div>
+      )}
+      <div
+        className={`flex flex-col items-center justify-center rounded-(--radius-card) border-2 border-dashed px-8 py-16 text-center transition-colors ${
+          dragOver ? "border-accent bg-accent/5" : "border-border"
+        }`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files[0];
+          if (file && fileRef.current) {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileRef.current.files = dt.files;
+            fileRef.current.dispatchEvent(
+              new Event("change", { bubbles: true })
+            );
+          }
+        }}
       >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
-        />
-      </svg>
-      <p className="mb-2 text-lg font-semibold">
-        Drag and drop your CSV file here
-      </p>
-      <p className="mb-6 text-sm text-text-muted">
-        or click below to browse. Supports Goodreads, StoryGraph, and most book
-        tracking exports.
-      </p>
-      <label className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88">
-        Choose file
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv"
-          className="hidden"
-          onChange={onFile}
-        />
-      </label>
-      <p className="mt-4 text-xs text-text-subtle">
-        Maximum 500 rows. Only ISBN column is required.
-      </p>
+        <svg
+          className="mb-4 h-12 w-12 text-text-subtle"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+          />
+        </svg>
+        <p className="mb-2 text-lg font-semibold">
+          {providerLabel
+            ? `Upload your ${providerLabel} export`
+            : "Drag and drop your CSV file here"}
+        </p>
+        <p className="mb-6 text-sm text-text-muted">
+          {providerLabel
+            ? `Drop your ${providerLabel} CSV export below, or click to browse.`
+            : "or click below to browse. Supports Goodreads, StoryGraph, and most book tracking exports."}
+        </p>
+        <label className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88">
+          Choose file
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={onFile}
+          />
+        </label>
+        <p className="mt-4 text-xs text-text-subtle">
+          Maximum 500 rows. Only ISBN column is required.
+        </p>
+      </div>
+      <div className="mt-4">
+        <button
+          onClick={onBack}
+          className="cursor-pointer rounded-(--radius-input) border border-border px-6 py-2.5 font-serif font-semibold transition-colors hover:bg-bg-medium"
+        >
+          Back
+        </button>
+      </div>
     </div>
   );
 }
@@ -1210,6 +1388,7 @@ function MappingStep({
   headers,
   sampleRows,
   fieldMap,
+  selectedProvider,
   onChange,
   onConfirm,
   onBack,
@@ -1217,17 +1396,27 @@ function MappingStep({
   headers: string[];
   sampleRows: string[][];
   fieldMap: Record<string, number | null>;
+  selectedProvider: Provider;
   onChange: (field: string, colIdx: number | null) => void;
   onConfirm: () => void;
   onBack: () => void;
 }) {
   const hasIsbn = fieldMap.isbn13 !== null && fieldMap.isbn13 !== undefined;
+  const preset = PROVIDER_PRESETS[selectedProvider];
+  const noIsbn = preset.noIsbn ?? false;
 
   return (
     <div>
+      {selectedProvider !== "generic" && (
+        <div className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-sm font-medium text-accent">
+          <span>{preset.label} detected</span>
+        </div>
+      )}
       <p className="mb-4 text-sm text-text-muted">
-        Match your CSV columns to in prose fields. We auto-detected what we
-        could.
+        Match your CSV columns to in prose fields.
+        {selectedProvider !== "generic"
+          ? " We pre-filled the mapping based on your selected source."
+          : " We auto-detected what we could."}
       </p>
 
       <div className="mb-6 overflow-x-auto">
@@ -1301,9 +1490,15 @@ function MappingStep({
         </table>
       </div>
 
-      {!hasIsbn && (
+      {!hasIsbn && !noIsbn && (
         <p className="mb-4 text-sm font-semibold text-error">
           ISBN is required to look up book metadata.
+        </p>
+      )}
+
+      {noIsbn && (
+        <p className="mb-4 text-sm text-text-muted">
+          ISBN mapping is not required for Audible exports.
         </p>
       )}
 
@@ -1316,7 +1511,7 @@ function MappingStep({
         </button>
         <button
           onClick={onConfirm}
-          disabled={!hasIsbn}
+          disabled={!hasIsbn && !noIsbn}
           className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-2.5 font-serif font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
         >
           Continue
