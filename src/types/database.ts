@@ -1839,6 +1839,7 @@ export type Database = {
           review: string | null
           review_spoiler: boolean
           reviewed_at: string | null
+          source: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["read_status_t"]
           updated_at: string
@@ -1857,6 +1858,7 @@ export type Database = {
           review?: string | null
           review_spoiler?: boolean
           reviewed_at?: string | null
+          source?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["read_status_t"]
           updated_at?: string
@@ -1875,6 +1877,7 @@ export type Database = {
           review?: string | null
           review_spoiler?: boolean
           reviewed_at?: string | null
+          source?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["read_status_t"]
           updated_at?: string

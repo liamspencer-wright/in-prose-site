@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
               review: book.review ?? null,
               started_at: book.started_at ?? null,
               finished_at: book.finished_at ?? null,
+              source: "csv_import",
             });
 
             if (linkError) {
@@ -132,6 +133,7 @@ export async function POST(request: NextRequest) {
             review: book.review ?? null,
             started_at: book.started_at ?? null,
             finished_at: book.finished_at ?? null,
+            source: "csv_import",
           })
           .eq("user_id", user.id)
           .eq("isbn13", book.isbn13);
