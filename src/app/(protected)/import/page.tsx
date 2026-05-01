@@ -77,7 +77,7 @@ type ImportResult = {
 type RatingScale = "0-5" | "0-10" | "0-100";
 type DateFormat = "auto" | "YYYY-MM-DD" | "DD/MM/YYYY" | "MM/DD/YYYY";
 
-type Provider = "goodreads" | "storygraph" | "fable" | "audible" | "generic";
+type Provider = "goodreads" | "storygraph" | "fable" | "generic";
 type FieldKey =
   | "isbn13"
   | "title"
@@ -95,7 +95,6 @@ const PROVIDER_PRESETS: Record<
     label: string;
     columns: Partial<Record<FieldKey, string>>;
     ratingScale: RatingScale;
-    noIsbn?: boolean;
   }
 > = {
   goodreads: {
@@ -128,14 +127,6 @@ const PROVIDER_PRESETS: Record<
     label: "Fable",
     columns: {},
     ratingScale: "0-5",
-  },
-  audible: {
-    label: "Audible",
-    columns: {
-      status: "Status",
-    },
-    ratingScale: "0-5",
-    noIsbn: true,
   },
   generic: {
     label: "Generic CSV",
@@ -490,8 +481,7 @@ export default function ImportPage() {
   /* ── Mapping → Validate ── */
 
   const handleMappingConfirm = useCallback(() => {
-    const noIsbn = PROVIDER_PRESETS[selectedProvider]?.noIsbn;
-    if (!noIsbn && (fieldMap.isbn13 === null || fieldMap.isbn13 === undefined)) {
+    if (fieldMap.isbn13 === null || fieldMap.isbn13 === undefined) {
       setError("You must map a CSV column to ISBN.");
       return;
     }
@@ -602,11 +592,7 @@ export default function ImportPage() {
     }
 
     if (parsed.length === 0) {
-      setError(
-        PROVIDER_PRESETS[selectedProvider]?.noIsbn
-          ? "No valid ISBNs found. Audible exports use ASINs which cannot be matched to our catalogue."
-          : "No valid ISBNs found in the CSV."
-      );
+      setError("No valid ISBNs found in the CSV.");
       return;
     }
 
@@ -1239,7 +1225,6 @@ const PROVIDER_ORDER: Provider[] = [
   "goodreads",
   "storygraph",
   "fable",
-  "audible",
   "generic",
 ];
 
@@ -1294,12 +1279,6 @@ function UploadStep({
 
   return (
     <div>
-      {provider === "audible" && (
-        <div className="mb-6 rounded-(--radius-card) border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="font-semibold">Heads up:</span> Audible exports use
-          ASINs, not ISBNs. Most books may not be found in our catalogue.
-        </div>
-      )}
       <div
         className={`flex flex-col items-center justify-center rounded-(--radius-card) border-2 border-dashed px-8 py-16 text-center transition-colors ${
           dragOver ? "border-accent bg-accent/5" : "border-border"
@@ -1403,7 +1382,6 @@ function MappingStep({
 }) {
   const hasIsbn = fieldMap.isbn13 !== null && fieldMap.isbn13 !== undefined;
   const preset = PROVIDER_PRESETS[selectedProvider];
-  const noIsbn = preset.noIsbn ?? false;
 
   return (
     <div>
@@ -1490,15 +1468,9 @@ function MappingStep({
         </table>
       </div>
 
-      {!hasIsbn && !noIsbn && (
+      {!hasIsbn && (
         <p className="mb-4 text-sm font-semibold text-error">
           ISBN is required to look up book metadata.
-        </p>
-      )}
-
-      {noIsbn && (
-        <p className="mb-4 text-sm text-text-muted">
-          ISBN mapping is not required for Audible exports.
         </p>
       )}
 
@@ -1511,7 +1483,7 @@ function MappingStep({
         </button>
         <button
           onClick={onConfirm}
-          disabled={!hasIsbn && !noIsbn}
+          disabled={!hasIsbn}
           className="cursor-pointer rounded-(--radius-input) bg-accent px-8 py-2.5 font-serif font-bold text-white transition-opacity hover:opacity-88 disabled:cursor-default disabled:opacity-55"
         >
           Continue
