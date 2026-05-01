@@ -20,6 +20,16 @@ type ImportResult = {
   errors: string[];
 };
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
+const CHUNK_SIZE = 50;
+
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
 
@@ -71,40 +81,45 @@ export async function POST(request: NextRequest) {
         );
 
         if (bulkBookError) {
-          // Fallback: all new books fail
           for (const b of validBooks) {
             result.errors.push(`${b.isbn13}: failed to upsert book`);
           }
           processed += validBooks.length;
+          controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
         } else {
-          // Bulk insert user_books — process in chunks to get per-book errors
-          // Supabase upsert doesn't easily report per-row errors, so we insert
-          // individually but only the user_books link (books row already exists)
-          for (const book of validBooks) {
-            const { error: linkError } = await supabase.from("user_books").insert({
-              user_id: user.id,
-              isbn13: book.isbn13,
-              status: book.status ?? "to_read",
-              ownership: book.ownership ?? "not_owned",
-              visibility: book.visibility ?? "public",
-              rating: book.rating ?? null,
-              review: book.review ?? null,
-              started_at: book.started_at ?? null,
-              finished_at: book.finished_at ?? null,
-              source: "csv_import",
-            });
+          // Insert user_books in parallel chunks of CHUNK_SIZE
+          for (const insertChunk of chunk(validBooks, CHUNK_SIZE)) {
+            const chunkResults = await Promise.all(
+              insertChunk.map(async (book) => {
+                const { error: linkError } = await supabase.from("user_books").insert({
+                  user_id: user.id,
+                  isbn13: book.isbn13,
+                  status: book.status ?? "to_read",
+                  ownership: book.ownership ?? "not_owned",
+                  visibility: book.visibility ?? "public",
+                  rating: book.rating ?? null,
+                  review: book.review ?? null,
+                  started_at: book.started_at ?? null,
+                  finished_at: book.finished_at ?? null,
+                  source: "csv_import",
+                });
+                return { book, error: linkError };
+              })
+            );
 
-            if (linkError) {
-              if (linkError.code === "23505") {
-                result.skipped++;
+            for (const { book, error: linkError } of chunkResults) {
+              if (linkError) {
+                if (linkError.code === "23505") {
+                  result.skipped++;
+                } else {
+                  result.errors.push(`${book.isbn13}: ${linkError.message}`);
+                }
               } else {
-                result.errors.push(`${book.isbn13}: ${linkError.message}`);
+                result.added++;
               }
-            } else {
-              result.added++;
+              processed++;
             }
 
-            processed++;
             controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
           }
         }
@@ -114,7 +129,7 @@ export async function POST(request: NextRequest) {
         controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
 
-      // Update existing books (still per-row — each needs a different WHERE)
+      // Update existing books in parallel chunks of CHUNK_SIZE
       const validUpdates = updates.filter(
         (b) => b.isbn13 && typeof b.isbn13 === "string"
       );
@@ -122,29 +137,36 @@ export async function POST(request: NextRequest) {
       result.skipped += skippedUpdates;
       processed += skippedUpdates;
 
-      for (const book of validUpdates) {
-        const { error: updateError } = await supabase
-          .from("user_books")
-          .update({
-            status: book.status ?? "to_read",
-            ownership: book.ownership ?? "not_owned",
-            visibility: book.visibility ?? "public",
-            rating: book.rating ?? null,
-            review: book.review ?? null,
-            started_at: book.started_at ?? null,
-            finished_at: book.finished_at ?? null,
-            source: "csv_import",
+      for (const updateChunk of chunk(validUpdates, CHUNK_SIZE)) {
+        const chunkResults = await Promise.all(
+          updateChunk.map(async (book) => {
+            const { error: updateError } = await supabase
+              .from("user_books")
+              .update({
+                status: book.status ?? "to_read",
+                ownership: book.ownership ?? "not_owned",
+                visibility: book.visibility ?? "public",
+                rating: book.rating ?? null,
+                review: book.review ?? null,
+                started_at: book.started_at ?? null,
+                finished_at: book.finished_at ?? null,
+                source: "csv_import",
+              })
+              .eq("user_id", user.id)
+              .eq("isbn13", book.isbn13);
+            return { book, error: updateError };
           })
-          .eq("user_id", user.id)
-          .eq("isbn13", book.isbn13);
+        );
 
-        if (updateError) {
-          result.errors.push(`${book.isbn13}: ${updateError.message}`);
-        } else {
-          result.updated++;
+        for (const { book, error: updateError } of chunkResults) {
+          if (updateError) {
+            result.errors.push(`${book.isbn13}: ${updateError.message}`);
+          } else {
+            result.updated++;
+          }
+          processed++;
         }
 
-        processed++;
         controller.enqueue(encoder.encode(JSON.stringify({ progress: processed, total }) + "\n"));
       }
 
@@ -183,4 +205,3 @@ export async function GET(request: NextRequest) {
   const meta = await lookupIsbn(isbn, supabase);
   return NextResponse.json(meta);
 }
-

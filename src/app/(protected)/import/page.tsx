@@ -104,6 +104,14 @@ const STATUS_MAP: [RegExp, string][] = [
   [/^(did[_\- ]not[_\- ]finish|dnf|abandoned|quit|stopped)$/i, "dnf"],
 ];
 
+function chunk<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 function mapStatus(raw: string | null): string {
   if (!raw) return "to_read";
   const s = raw.trim();
@@ -293,6 +301,7 @@ export default function ImportPage() {
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const [importStartTime, setImportStartTime] = useState<number | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [failedIsbns, setFailedIsbns] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
@@ -748,8 +757,8 @@ export default function ImportPage() {
 
   /* ── Submit ── */
 
-  const handleSubmit = useCallback(async () => {
-    const selected = rows.filter((r) => r.selected);
+  const handleSubmit = useCallback(async (isbnFilter?: Set<string>) => {
+    const selected = rows.filter((r) => r.selected && (!isbnFilter || isbnFilter.has(r.isbn13)));
     if (selected.length === 0) return;
 
     const newBooks = selected.filter((r) => !r.isDuplicate);
@@ -757,102 +766,135 @@ export default function ImportPage() {
 
     setSubmitting(true);
     setError(null);
+    setFailedIsbns([]);
     setImportProgress(null);
     setImportStartTime(Date.now());
     setStep("importing");
 
+    const BATCH_SIZE = 50;
+    const totalBooks = selected.length;
+    let globalProcessed = 0;
+    const aggregated: ImportResult = { added: 0, updated: 0, skipped: 0, errors: [] };
+
+    const toPayload = (r: ImportRow) => ({
+      isbn13: r.isbn13,
+      status: r.status,
+      ownership: r.ownership,
+      visibility: r.visibility,
+      rating: r.rating,
+      review: r.review,
+      started_at: r.started_at,
+      finished_at: r.finished_at,
+    });
+
+    // Interleave new-book and update batches so progress feels even
+    const bookBatches = chunk(newBooks, BATCH_SIZE).map((b) => ({ books: b, updates: [] as ImportRow[] }));
+    const updateBatches = chunk(updates, BATCH_SIZE).map((u) => ({ books: [] as ImportRow[], updates: u }));
+    const allBatches = [...bookBatches, ...updateBatches];
+
     try {
-      const res = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          books: newBooks.map((r) => ({
-            isbn13: r.isbn13,
-            status: r.status,
-            ownership: r.ownership,
-            visibility: r.visibility,
-            rating: r.rating,
-            review: r.review,
-            started_at: r.started_at,
-            finished_at: r.finished_at,
-          })),
-          updates: updates.map((r) => ({
-            isbn13: r.isbn13,
-            status: r.status,
-            ownership: r.ownership,
-            visibility: r.visibility,
-            rating: r.rating,
-            review: r.review,
-            started_at: r.started_at,
-            finished_at: r.finished_at,
-          })),
-        }),
-      });
+      for (const batch of allBatches) {
+        const batchItems = [...batch.books, ...batch.updates];
+        const batchTotal = batchItems.length;
 
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Import failed");
-        setSubmitting(false);
-        setStep("review-ready");
-        return;
-      }
+        let res: Response;
+        try {
+          res = await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(30_000),
+            body: JSON.stringify({
+              books: batch.books.map(toPayload),
+              updates: batch.updates.map(toPayload),
+            }),
+          });
+        } catch (err) {
+          const isTimeout =
+            (err instanceof DOMException && err.name === "TimeoutError") ||
+            (err instanceof DOMException && err.name === "AbortError");
+          const msg = isTimeout ? "request timed out" : "network error";
+          for (const b of batchItems) aggregated.errors.push(`${b.isbn13}: ${msg}`);
+          globalProcessed += batchTotal;
+          setImportProgress({ done: globalProcessed, total: totalBooks });
+          continue;
+        }
 
-      // Read NDJSON stream
-      const reader = res.body?.getReader();
-      if (!reader) {
-        const data: ImportResult = await res.json();
-        setResult(data);
-        setStep("done");
-        return;
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let finalResult: ImportResult | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
+        if (!res.ok) {
+          let msg = "import failed";
           try {
-            const parsed = JSON.parse(line);
-            if (parsed.progress !== undefined) {
-              setImportProgress({ done: parsed.progress, total: parsed.total });
-            }
-            if (parsed.result) {
-              finalResult = parsed.result;
-            }
-          } catch {
-            // skip malformed lines
+            const data = await res.json();
+            msg = data.error ?? msg;
+          } catch { /* ignore */ }
+          for (const b of batchItems) aggregated.errors.push(`${b.isbn13}: ${msg}`);
+          globalProcessed += batchTotal;
+          setImportProgress({ done: globalProcessed, total: totalBooks });
+          continue;
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) {
+          for (const b of batchItems) aggregated.errors.push(`${b.isbn13}: no response body`);
+          globalProcessed += batchTotal;
+          setImportProgress({ done: globalProcessed, total: totalBooks });
+          continue;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let batchProcessed = 0;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const parsed = JSON.parse(line);
+              if (parsed.progress !== undefined) {
+                batchProcessed = parsed.progress;
+                setImportProgress({ done: globalProcessed + batchProcessed, total: totalBooks });
+              }
+              if (parsed.result) {
+                aggregated.added += parsed.result.added;
+                aggregated.updated += parsed.result.updated;
+                aggregated.skipped += parsed.result.skipped;
+                aggregated.errors.push(...parsed.result.errors);
+              }
+            } catch { /* skip malformed */ }
           }
         }
-      }
 
-      // Process any remaining buffer
-      if (buffer.trim()) {
-        try {
-          const parsed = JSON.parse(buffer);
-          if (parsed.result) finalResult = parsed.result;
-        } catch {
-          // skip
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.result) {
+              aggregated.added += parsed.result.added;
+              aggregated.updated += parsed.result.updated;
+              aggregated.skipped += parsed.result.skipped;
+              aggregated.errors.push(...parsed.result.errors);
+            }
+          } catch { /* skip */ }
         }
+
+        globalProcessed += batchProcessed || batchTotal;
+        setImportProgress({ done: globalProcessed, total: totalBooks });
       }
 
-      if (finalResult) {
-        setResult(finalResult);
-        setStep("done");
+      const failed = aggregated.errors
+        .map((e) => e.split(":")[0].trim())
+        .filter(Boolean);
+      setFailedIsbns(failed);
+      setResult(aggregated);
+      setStep("done");
+    } catch (err) {
+      if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+        setError("Network error. Check your connection and try again.");
       } else {
-        setError("Import completed but no result received.");
-        setStep("review-ready");
+        setError("Something went wrong. Please try again.");
       }
-    } catch {
-      setError("Network error. Please try again.");
       setStep("review-ready");
     } finally {
       setSubmitting(false);
@@ -1020,7 +1062,13 @@ export default function ImportPage() {
         />
       )}
 
-      {step === "done" && result && <DoneStep result={result} />}
+      {step === "done" && result && (
+        <DoneStep
+          result={result}
+          failedIsbns={failedIsbns}
+          onRetry={failedIsbns.length > 0 ? () => handleSubmit(new Set(failedIsbns)) : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -2753,7 +2801,16 @@ function ReviewNav({
 
 /* ── Done Step ── */
 
-function DoneStep({ result }: { result: ImportResult }) {
+function DoneStep({
+  result,
+  failedIsbns,
+  onRetry,
+}: {
+  result: ImportResult;
+  failedIsbns: string[];
+  onRetry?: () => void;
+}) {
+  const hasErrors = result.errors.length > 0;
   return (
     <div className="py-8 text-center">
       <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-accent/10 text-3xl text-accent">
@@ -2781,8 +2838,14 @@ function DoneStep({ result }: { result: ImportResult }) {
             <p className="text-text-muted">skipped</p>
           </div>
         )}
+        {hasErrors && (
+          <div>
+            <p className="text-2xl font-bold text-error">{failedIsbns.length}</p>
+            <p className="text-text-muted">failed</p>
+          </div>
+        )}
       </div>
-      {result.errors.length > 0 && (
+      {hasErrors && (
         <div className="mx-auto mb-6 max-w-md rounded-(--radius-card) border border-error/30 bg-error/5 p-4 text-left text-xs text-error">
           <p className="mb-2 font-semibold">Errors:</p>
           {result.errors.map((e, i) => (
@@ -2790,12 +2853,22 @@ function DoneStep({ result }: { result: ImportResult }) {
           ))}
         </div>
       )}
-      <Link
-        href="/library"
-        className="inline-block rounded-(--radius-input) bg-accent px-8 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
-      >
-        View your library
-      </Link>
+      <div className="flex flex-col items-center gap-3">
+        <Link
+          href="/library"
+          className="inline-block rounded-(--radius-input) bg-accent px-8 py-3 font-serif text-lg font-bold text-white transition-opacity hover:opacity-88"
+        >
+          View your library
+        </Link>
+        {onRetry && (
+          <button
+            onClick={onRetry}
+            className="text-sm text-text-muted underline underline-offset-2 hover:text-text"
+          >
+            Retry {failedIsbns.length} failed {failedIsbns.length === 1 ? "book" : "books"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
