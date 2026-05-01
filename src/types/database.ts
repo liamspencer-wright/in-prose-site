@@ -1105,6 +1105,51 @@ export type Database = {
         }
         Relationships: []
       }
+      news_posts: {
+        Row: {
+          id: string
+          title: string
+          slug: string
+          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          body: string
+          excerpt: string | null
+          cover_image_url: string | null
+          status: "draft" | "published"
+          published_at: string | null
+          author_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          slug: string
+          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          body?: string
+          excerpt?: string | null
+          cover_image_url?: string | null
+          status?: "draft" | "published"
+          published_at?: string | null
+          author_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          slug?: string
+          type?: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          body?: string
+          excerpt?: string | null
+          cover_image_url?: string | null
+          status?: "draft" | "published"
+          published_at?: string | null
+          author_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           actor_id: string | null
@@ -3132,6 +3177,13 @@ export type Database = {
       }
     }
     Enums: {
+      news_post_type_t:
+        | "featured_review"
+        | "release_notes_app"
+        | "release_notes_website"
+        | "article"
+        | "announcement"
+      news_post_status_t: "draft" | "published"
       ownership_t: "owned" | "borrowed" | "not_owned"
       read_status_t: "to_read" | "reading" | "finished" | "dnf"
       report_content_type: "post" | "comment" | "review" | "profile"
@@ -3276,6 +3328,14 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      news_post_type_t: [
+        "featured_review",
+        "release_notes_app",
+        "release_notes_website",
+        "article",
+        "announcement",
+      ],
+      news_post_status_t: ["draft", "published"],
       ownership_t: ["owned", "borrowed", "not_owned"],
       read_status_t: ["to_read", "reading", "finished", "dnf"],
       report_content_type: ["post", "comment", "review", "profile"],

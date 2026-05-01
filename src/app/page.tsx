@@ -4,16 +4,42 @@ import Link from "next/link";
 import { SignupForm } from "./signup-form";
 import { NavBar } from "@/components/nav-bar";
 import { HomePageSwitch } from "./home-switch";
+import { createClient } from "@/lib/supabase/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient();
+  const { data: latestNews } = await supabase
+    .from("news_posts")
+    .select("id, title, slug, type, excerpt, published_at")
+    .eq("status", "published")
+    .order("published_at", { ascending: false })
+    .limit(3);
+
   return (
     <HomePageSwitch
-      marketingPage={<MarketingPage />}
+      marketingPage={<MarketingPage latestNews={latestNews ?? []} />}
     />
   );
 }
 
-function MarketingPage() {
+type LatestNewsPost = {
+  id: string;
+  title: string;
+  slug: string;
+  type: string;
+  excerpt: string | null;
+  published_at: string | null;
+};
+
+const NEWS_TYPE_LABELS: Record<string, string> = {
+  featured_review: "Featured Review",
+  release_notes_app: "App Update",
+  release_notes_website: "Website Update",
+  article: "Article",
+  announcement: "Announcement",
+};
+
+function MarketingPage({ latestNews }: { latestNews: LatestNewsPost[] }) {
   return (
     <>
       <Script
@@ -100,6 +126,49 @@ function MarketingPage() {
             <SignupForm />
           </div>
         </section>
+
+        {/* Latest news */}
+        {latestNews.length > 0 && (
+          <section className="mx-auto w-full max-w-3xl px-6 pb-16 max-sm:px-4">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Latest news</h2>
+              <Link
+                href="/news"
+                className="text-sm font-semibold text-accent hover:underline"
+              >
+                View all →
+              </Link>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {latestNews.map((post) => (
+                <Link
+                  key={post.id}
+                  href={`/news/${post.slug}`}
+                  className="block rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_4px_20px_rgba(0,0,0,0.08)]"
+                >
+                  <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-accent">
+                    {NEWS_TYPE_LABELS[post.type] ?? post.type}
+                  </div>
+                  <p className="font-semibold leading-snug">{post.title}</p>
+                  {post.excerpt && (
+                    <p className="mt-1.5 line-clamp-2 text-sm text-text-muted">
+                      {post.excerpt}
+                    </p>
+                  )}
+                  {post.published_at && (
+                    <p className="mt-2 text-xs text-text-subtle">
+                      {new Date(post.published_at).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Footer */}
         <footer className="mt-auto border-t border-border px-6 py-8 max-sm:px-4">

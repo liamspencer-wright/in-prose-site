@@ -159,6 +159,7 @@ export function Dashboard() {
         />
         <TargetsSection targets={targets} finishedBooks={finishedBooks} />
         <CurrentlyReadingSection books={readingBooks} />
+        <LatestNewsSection />
       </div>
     </div>
   );
@@ -761,6 +762,87 @@ function CurrentlyReadingCard({
             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
           </svg>
         </Link>
+      </div>
+    </div>
+  );
+}
+
+// ─── Latest News Section ─────────────────────────────────────────────────────
+
+type LatestNewsPost = {
+  id: string;
+  title: string;
+  slug: string;
+  type: string;
+  excerpt: string | null;
+  published_at: string | null;
+};
+
+const NEWS_TYPE_LABELS: Record<string, string> = {
+  featured_review: "Featured Review",
+  release_notes_app: "App Update",
+  release_notes_website: "Website Update",
+  article: "Article",
+  announcement: "Announcement",
+};
+
+function LatestNewsSection() {
+  const supabase = createClient();
+  const [posts, setPosts] = useState<LatestNewsPost[]>([]);
+
+  useEffect(() => {
+    supabase
+      .from("news_posts")
+      .select("id, title, slug, type, excerpt, published_at")
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (data?.length) setPosts(data as LatestNewsPost[]);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!posts.length) return null;
+
+  return (
+    <div className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-5 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-xl font-bold">Latest news</h2>
+        <Link
+          href="/news"
+          className="text-sm font-semibold text-accent hover:underline"
+        >
+          View all →
+        </Link>
+      </div>
+      <div className="space-y-3">
+        {posts.map((post) => (
+          <Link
+            key={post.id}
+            href={`/news/${post.slug}`}
+            className="block rounded-lg border border-border-subtle bg-bg-light p-3 transition-colors hover:bg-border-subtle"
+          >
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent">
+              {NEWS_TYPE_LABELS[post.type] ?? post.type}
+            </div>
+            <p className="font-semibold leading-snug">{post.title}</p>
+            {post.excerpt && (
+              <p className="mt-1 line-clamp-1 text-xs text-text-muted">
+                {post.excerpt}
+              </p>
+            )}
+            {post.published_at && (
+              <p className="mt-1 text-xs text-text-subtle">
+                {new Date(post.published_at).toLocaleDateString("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
+            )}
+          </Link>
+        ))}
       </div>
     </div>
   );
