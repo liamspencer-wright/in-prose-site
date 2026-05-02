@@ -12,6 +12,13 @@ import {
   parseBookListEntries,
 } from "@/lib/news-book-meta";
 import type { Database } from "@/types/database";
+import { JsonLd } from "@/lib/seo/json-ld";
+import {
+  articleSchema,
+  breadcrumbListSchema,
+  siteId,
+  SITE_URL,
+} from "@/lib/seo/schema";
 
 type NewsPost = Database["public"]["Tables"]["news_posts"]["Row"];
 
@@ -40,16 +47,21 @@ export async function generateMetadata({
     .eq("status", "published")
     .maybeSingle();
 
-  if (!post) return { title: "Not found — in prose" };
+  if (!post) return { title: "Not found — in prose", robots: { index: false } };
 
   const ogImage = post.cover_image_url ?? post.image_urls?.[0] ?? null;
 
   return {
     title: `${post.title} — in prose`,
     description: post.excerpt ?? undefined,
+    alternates: {
+      canonical: `/news/${slug}`,
+    },
     openGraph: {
       title: post.title,
       description: post.excerpt ?? undefined,
+      url: `https://inprose.co.uk/news/${slug}`,
+      type: "article",
       images: ogImage ? [{ url: ogImage }] : undefined,
     },
   };
@@ -72,6 +84,22 @@ export default async function NewsArticlePage({
 
   if (!post) notFound();
 
+  const schemas = [
+    articleSchema({
+      slug: post.slug,
+      headline: post.title,
+      description: post.excerpt,
+      image: post.cover_image_url ?? post.image_urls?.[0] ?? null,
+      datePublished: post.published_at,
+      dateModified: post.updated_at,
+    }),
+    breadcrumbListSchema([
+      { name: "Home", url: SITE_URL },
+      { name: "News", url: siteId("/news") },
+      { name: post.title, url: siteId(`/news/${post.slug}`) },
+    ]),
+  ];
+
   let bookMeta = null;
   let listEntries = parseBookListEntries(post.book_list_entries);
   let listMeta = new Map();
@@ -88,6 +116,7 @@ export default async function NewsArticlePage({
 
   return (
     <div className="flex min-h-svh flex-col">
+      <JsonLd schemas={schemas} />
       <NavBar />
 
       <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10 max-sm:px-4">

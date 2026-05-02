@@ -3,6 +3,14 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import UserAvatar from "@/components/user-avatar";
+import { JsonLd } from "@/lib/seo/json-ld";
+import {
+  personSchema,
+  profilePageSchema,
+  breadcrumbListSchema,
+  siteId,
+  SITE_URL,
+} from "@/lib/seo/schema";
 
 export const revalidate = 60;
 
@@ -37,15 +45,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     .ilike("username", username)
     .maybeSingle();
 
-  if (!profile) return { title: "User not found" };
+  if (!profile) return { title: "User not found", robots: { index: false } };
 
   const title = `${profile.display_name ?? profile.username} (@${profile.username})`;
   return {
     title,
     description: `See what ${profile.display_name ?? profile.username} is reading on in prose.`,
+    alternates: {
+      canonical: `/u/${profile.username}`,
+    },
     openGraph: {
       title,
       description: `See what ${profile.display_name ?? profile.username} is reading on in prose.`,
+      url: `https://inprose.co.uk/u/${profile.username}`,
       ...(profile.avatar_url && {
         images: [{ url: profile.avatar_url, width: 200, height: 200 }],
       }),
@@ -114,8 +126,29 @@ export default async function PublicProfilePage({ params }: Props) {
       })
     : null;
 
+  const schemas = [
+    personSchema({
+      username: profile.username ?? username,
+      displayName: profile.display_name,
+      description: profile.description,
+      avatarUrl: profile.avatar_url,
+    }),
+    profilePageSchema({
+      username: profile.username ?? username,
+      displayName: profile.display_name,
+    }),
+    breadcrumbListSchema([
+      { name: "Home", url: SITE_URL },
+      {
+        name: profile.display_name ?? profile.username ?? username,
+        url: siteId(`/u/${profile.username ?? username}`),
+      },
+    ]),
+  ];
+
   return (
     <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
+      <JsonLd schemas={schemas} />
       {/* Profile header */}
       <div className="mb-8 flex flex-col items-center text-center">
         <div className="mb-4">

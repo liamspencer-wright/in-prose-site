@@ -4,6 +4,8 @@ import { AuthProvider } from "@/components/auth-provider";
 import { AppShell } from "@/components/app-shell";
 import { CookieConsent } from "@/components/cookie-consent";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { JsonLd } from "@/lib/seo/json-ld";
+import { organizationSchema, websiteSchema } from "@/lib/seo/schema";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -69,6 +71,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <JsonLd
+          id="ld-site"
+          schemas={[organizationSchema(), websiteSchema()]}
+        />
+      </head>
       <body
         className={`${crimsonText.variable} font-serif bg-bg-light text-text-primary antialiased`}
       >

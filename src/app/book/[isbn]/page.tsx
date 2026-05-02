@@ -5,6 +5,14 @@ import Link from "next/link";
 import { BookEditWrapper } from "@/components/book-edit-wrapper";
 import UserAvatar from "@/components/user-avatar";
 import { getCanonicalIsbn } from "@/lib/seo/canonical";
+import { JsonLd } from "@/lib/seo/json-ld";
+import {
+  bookSchema,
+  breadcrumbListSchema,
+  faqPageSchema,
+  siteId,
+  SITE_URL,
+} from "@/lib/seo/schema";
 
 export const revalidate = 300; // 5 minutes
 
@@ -116,14 +124,11 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
 
   const coverSrc = book.image || book.image_original;
 
-  const jsonLd = buildJsonLd(book);
+  const schemas = buildBookPageSchemas(book, canonical);
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      <JsonLd schemas={schemas} />
 
       {/* Book header */}
       <div className="mb-8 flex gap-6 max-sm:flex-col max-sm:items-center">
@@ -380,59 +385,90 @@ async function fetchSharerInfo(
 
 // ── Helpers ──
 
-function buildJsonLd(book: BookData): Record<string, unknown> {
-  const ld: Record<string, unknown> = {
-    "@context": "https://schema.org",
-    "@type": "Book",
-    name: book.title ?? "Untitled",
-    isbn: book.isbn13,
-  };
+function buildBookPageSchemas(book: BookData, canonical: string): unknown[] {
+  const description = book.synopsis ? stripHtml(book.synopsis).slice(0, 500) : null;
 
-  if (book.authors?.length) {
-    ld.author = book.authors.map((name) => ({
-      "@type": "Person",
-      name,
-    }));
-  }
+  const schemas: unknown[] = [
+    bookSchema({
+      isbn13: book.isbn13,
+      canonicalIsbn: canonical,
+      title: book.title ?? "Untitled",
+      authors: book.authors,
+      image: book.image,
+      publisher: book.publisher,
+      pubYear: book.pub_year,
+      pages: book.pages,
+      genres: book.genres,
+      description,
+      rating:
+        book.community_rating !== null &&
+        book.ratings_count !== null &&
+        book.ratings_count > 0
+          ? {
+              ratingValue: book.community_rating,
+              ratingCount: book.ratings_count,
+            }
+          : null,
+    }),
+    breadcrumbListSchema([
+      { name: "Home", url: SITE_URL },
+      {
+        name: book.title ?? "Untitled",
+        url: siteId(`/book/${canonical}`),
+      },
+    ]),
+  ];
 
-  if (book.image) {
-    ld.image = book.image;
-  }
+  const faq = buildBookFaq(book);
+  if (faq.length > 0) schemas.push(faqPageSchema(faq));
 
-  if (book.publisher) {
-    ld.publisher = {
-      "@type": "Organization",
-      name: book.publisher,
-    };
-  }
+  return schemas;
+}
 
-  if (book.pub_year) {
-    ld.datePublished = String(book.pub_year);
+/**
+ * Programmatic FAQ from book metadata. Kept tight: every Q must be answerable
+ * from the data we have, and answers must be self-contained so AI can lift
+ * them as snippets.
+ */
+function buildBookFaq(book: BookData): Array<{ question: string; answer: string }> {
+  const qa: Array<{ question: string; answer: string }> = [];
+  const title = book.title ?? "this book";
+
+  if (book.authors && book.authors.length > 0) {
+    qa.push({
+      question: `Who wrote ${title}?`,
+      answer: `${title} was written by ${book.authors.join(", ")}.`,
+    });
   }
 
   if (book.pages) {
-    ld.numberOfPages = book.pages;
+    const minutes = book.pages * 2; // ~2 minutes per page average
+    const hours = Math.round(minutes / 60);
+    qa.push({
+      question: `How long is ${title}?`,
+      answer: `${title} is ${book.pages} pages — roughly ${hours} hours of reading at an average pace.`,
+    });
   }
 
-  if (book.genres?.length) {
-    ld.genre = book.genres;
+  if (book.pub_year) {
+    qa.push({
+      question: `When was ${title} published?`,
+      answer: `${title} was first published in ${book.pub_year}${
+        book.publisher ? ` by ${book.publisher}` : ""
+      }.`,
+    });
   }
 
-  if (
-    book.community_rating !== null &&
-    book.ratings_count !== null &&
-    book.ratings_count > 0
-  ) {
-    ld.aggregateRating = {
-      "@type": "AggregateRating",
-      ratingValue: book.community_rating,
-      bestRating: 10,
-      worstRating: 0,
-      ratingCount: book.ratings_count,
-    };
+  if (book.genres && book.genres.length > 0) {
+    qa.push({
+      question: `What genre is ${title}?`,
+      answer: `${title} is categorised as ${book.genres
+        .slice(0, 3)
+        .join(", ")}.`,
+    });
   }
 
-  return ld;
+  return qa;
 }
 
 function stripHtml(html: string): string {
