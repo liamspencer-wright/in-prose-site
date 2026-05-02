@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "gen:types": "cd ../inprose-v2 && supabase gen types typescript --linked --schema public > ../in-prose-site/src/types/database.ts"
   },
   "dependencies": {
     "@serwist/next": "^9.5.7",
