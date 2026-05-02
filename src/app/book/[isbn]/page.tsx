@@ -148,12 +148,14 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
     sharer = await fetchSharerInfo(isbn, shared_by);
   }
 
-  const [reviews, moreByAuthor, reviewSummary, authorLink] = await Promise.all([
-    fetchPublicReviews(isbn, 5),
-    fetchMoreByAuthor(isbn, 6),
-    fetchPublicReviewSummary(isbn),
-    fetchAuthorLink(isbn),
-  ]);
+  const [reviews, moreByAuthor, reviewSummary, authorLink, seriesLink] =
+    await Promise.all([
+      fetchPublicReviews(isbn, 5),
+      fetchMoreByAuthor(isbn, 6),
+      fetchPublicReviewSummary(isbn),
+      fetchAuthorLink(isbn),
+      fetchSeriesLink(isbn),
+    ]);
 
   const coverSrc = book.image || book.image_original;
 
@@ -268,6 +270,29 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
               )}
             </div>
           </div>
+        </section>
+      )}
+
+      {/* Series banner */}
+      {seriesLink && (
+        <section id="series" className="mb-6">
+          <Link
+            href={`/series/${seriesLink.slug}`}
+            className="block rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4 hover:bg-accent-blue/5"
+          >
+            <p className="text-xs uppercase tracking-wider text-accent">
+              Part of a series
+            </p>
+            <p className="mt-1 font-semibold">
+              {seriesLink.name}{" "}
+              <span className="font-normal text-text-muted">
+                · book {Number.isInteger(seriesLink.position) ? seriesLink.position : seriesLink.position.toFixed(1)}
+              </span>
+            </p>
+            <p className="mt-1 text-sm text-text-muted">
+              See the full reading order →
+            </p>
+          </Link>
         </section>
       )}
 
@@ -524,6 +549,23 @@ async function fetchAuthorLink(
   const row = data as { name: string | null; slug: string | null };
   if (!row.slug || !row.name) return null;
   return { name: row.name, slug: row.slug };
+}
+
+async function fetchSeriesLink(
+  isbn: string
+): Promise<{ name: string; slug: string; position: number } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .rpc("get_series_for_isbn", { p_isbn13: isbn })
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as { name: string | null; slug: string | null; position: number | null };
+  if (!row.slug || !row.name) return null;
+  return {
+    name: row.name,
+    slug: row.slug,
+    position: Number(row.position ?? 0),
+  };
 }
 
 async function fetchPublicReviewSummary(isbn: string): Promise<ReviewSummary> {

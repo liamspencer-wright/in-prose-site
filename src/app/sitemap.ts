@@ -75,7 +75,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  // Series / universes / browse / lists land in subsequent sub-issues.
+  // Series + universes — every entity with at least one member.
+  const [{ data: seriesRows }, { data: universeRows }] = await Promise.all([
+    supabase.rpc("get_series_for_sitemap"),
+    supabase.rpc("get_universes_for_sitemap"),
+  ]);
+  const seriesPages: MetadataRoute.Sitemap = ((seriesRows ?? []) as Array<{
+    slug: string;
+  }>).map((s) => ({
+    url: `${BASE_URL}/series/${s.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
+  const universePages: MetadataRoute.Sitemap = ((universeRows ?? []) as Array<{
+    slug: string;
+  }>).map((u) => ({
+    url: `${BASE_URL}/universes/${u.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
+
+  // Browse + lists land in subsequent sub-issues.
 
   return [
     ...staticPages,
@@ -83,5 +103,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...profilePages,
     ...newsPages,
     ...authorPages,
+    ...seriesPages,
+    ...universePages,
   ];
 }
