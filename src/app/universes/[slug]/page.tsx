@@ -252,9 +252,10 @@ async function fetchUniverseSeries(universeId: string): Promise<SeriesEntry[]> {
     p_universe_id: universeId,
   });
   if (error || !data) return [];
-  return (data as SeriesEntry[]).map((s) => ({
+  type Row = Omit<SeriesEntry, "position"> & { pos: number };
+  return (data as Row[]).map((s) => ({
     ...s,
-    position: Number(s.position),
+    position: Number(s.pos),
     book_count: Number(s.book_count),
   }));
 }
@@ -267,9 +268,10 @@ async function fetchUniverseStandalones(
     p_universe_id: universeId,
   });
   if (error || !data) return [];
-  return (data as StandaloneEntry[]).map((b) => ({
+  type Row = Omit<StandaloneEntry, "position"> & { pos: number };
+  return (data as Row[]).map((b) => ({
     ...b,
-    position: Number(b.position),
+    position: Number(b.pos),
   }));
 }
 

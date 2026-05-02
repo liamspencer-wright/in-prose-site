@@ -241,9 +241,11 @@ async function fetchSeriesMembers(seriesId: string): Promise<Member[]> {
     p_series_id: seriesId,
   });
   if (error || !data) return [];
-  return (data as Member[]).map((m) => ({
+  // RPC returns column `pos`; remap to local `position` for UI code.
+  type Row = Omit<Member, "position"> & { pos: number };
+  return (data as Row[]).map((m) => ({
     ...m,
-    position: Number(m.position),
+    position: Number(m.pos),
   }));
 }
 

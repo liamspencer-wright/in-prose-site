@@ -560,12 +560,13 @@ async function fetchSeriesLink(
     .rpc("get_series_for_isbn", { p_isbn13: isbn })
     .maybeSingle();
   if (error || !data) return null;
-  const row = data as { name: string | null; slug: string | null; position: number | null };
+  // RPC returns column `pos`; map to UI `position`.
+  const row = data as { name: string | null; slug: string | null; pos: number | null };
   if (!row.slug || !row.name) return null;
   return {
     name: row.name,
     slug: row.slug,
-    position: Number(row.position ?? 0),
+    position: Number(row.pos ?? 0),
   };
 }
 

@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: Props) {
   });
 
   type Member = {
-    position: number;
+    pos: number;
     isbn13: string | null;
     title: string | null;
     pub_year: number | null;
@@ -80,7 +80,7 @@ export async function GET(_req: Request, { params }: Props) {
       const link = m.isbn13
         ? `[${m.title ?? "Untitled"}](${SITE_URL}/book/${m.isbn13})`
         : m.title ?? "Untitled";
-      lines.push(`${formatPosition(m.position)}. ${link}${yearTag}${optionalTag}`);
+      lines.push(`${formatPosition(m.pos)}. ${link}${yearTag}${optionalTag}`);
       if (m.notes) lines.push(`   ${m.notes}`);
     }
     lines.push("");
