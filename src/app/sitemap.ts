@@ -37,20 +37,47 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     })
   );
 
-  // Public profiles — only users with a username.
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("username")
-    .not("username", "is", null)
-    .order("username");
-
-  const profilePages: MetadataRoute.Sitemap = (profiles ?? []).map(
-    (profile) => ({
-      url: `${BASE_URL}/u/${profile.username}`,
-      changeFrequency: "weekly" as const,
-      priority: 0.5,
-    })
-  );
+  // Public profiles — only those qualifying as "indexable" (≥5 public reviews
+  // or ≥1 public stack). Sub-routes follow the same gate.
+  const { data: profiles } = await supabase.rpc("get_qualified_profiles_for_sitemap");
+  type Q = {
+    username: string;
+    has_reviews: boolean;
+    has_lists: boolean;
+    has_library: boolean;
+  };
+  const qualified = (profiles ?? []) as Q[];
+  const profilePages: MetadataRoute.Sitemap = qualified.flatMap((p) => {
+    const out: MetadataRoute.Sitemap = [
+      {
+        url: `${BASE_URL}/u/${p.username}`,
+        changeFrequency: "weekly" as const,
+        priority: 0.5,
+      },
+    ];
+    if (p.has_library) {
+      out.push({
+        url: `${BASE_URL}/u/${p.username}/library`,
+        changeFrequency: "weekly" as const,
+        priority: 0.4,
+      });
+    }
+    if (p.has_reviews) {
+      out.push({
+        url: `${BASE_URL}/u/${p.username}/reviews`,
+        changeFrequency: "weekly" as const,
+        priority: 0.5,
+      });
+    }
+    if (p.has_lists) {
+      out.push({
+        url: `${BASE_URL}/u/${p.username}/lists`,
+        changeFrequency: "weekly" as const,
+        priority: 0.4,
+      });
+    }
+    return out;
+  });
 
   // News posts.
   const { data: newsPosts } = await supabase

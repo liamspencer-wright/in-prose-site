@@ -47,6 +47,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   if (!profile) return { title: "User not found", robots: { index: false } };
 
+  // Thin-content guard: profiles with no public reviews + no public lists
+  // shouldn't be indexed. We still render the page (signed-in friends may
+  // visit it) but mark it noindex to avoid bloating the index with empty
+  // profiles.
+  const { data: counts } = await supabase
+    .rpc("get_public_profile_by_username", { p_username: username })
+    .maybeSingle();
+  const reviews = Number(
+    (counts as { public_review_count?: number } | null)?.public_review_count ?? 0
+  );
+  const stacks = Number(
+    (counts as { public_stack_count?: number } | null)?.public_stack_count ?? 0
+  );
+  const indexable = reviews >= 5 || stacks >= 1;
+
   const title = `${profile.display_name ?? profile.username} (@${profile.username})`;
   return {
     title,
@@ -54,6 +69,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     alternates: {
       canonical: `/u/${profile.username}`,
     },
+    robots: indexable ? undefined : { index: false, follow: true },
     openGraph: {
       title,
       description: `See what ${profile.display_name ?? profile.username} is reading on in prose.`,
