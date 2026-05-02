@@ -2016,6 +2016,7 @@ export type Database = {
           email: string
           id: string
           name: string
+          referred_by: string | null
           test_group: string | null
         }
         Insert: {
@@ -2024,6 +2025,7 @@ export type Database = {
           email: string
           id?: string
           name: string
+          referred_by?: string | null
           test_group?: string | null
         }
         Update: {
@@ -2032,6 +2034,7 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          referred_by?: string | null
           test_group?: string | null
         }
         Relationships: []
@@ -4494,6 +4497,10 @@ export type Database = {
           p_source_screen?: string
         }
         Returns: string
+      }
+      refer_friend: {
+        Args: { p_email: string; p_name: string }
+        Returns: undefined
       }
       reject_custom_trigger: {
         Args: { p_reason?: string; p_value: string }
