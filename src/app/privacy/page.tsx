@@ -21,7 +21,7 @@ export default function PrivacyPage() {
 
       <h1 className="mb-2 text-4xl font-bold">Privacy Policy</h1>
       <p className="mb-8 text-sm text-text-subtle">
-        Last updated: November 30, 2025
+        Last updated: May 2, 2026
       </p>
 
       <div className="space-y-6 leading-relaxed text-text-muted [&_h2]:mb-2 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-text-primary">
@@ -47,7 +47,38 @@ export default function PrivacyPage() {
           Supabase also manages authentication and session tokens.
         </p>
 
-        <h2>3. Why we store this data</h2>
+        <h2>3. Third-party services</h2>
+        <p>
+          in prose uses the following third-party services to provide its
+          features:
+        </p>
+        <ul className="list-disc space-y-1 pl-6">
+          <li>
+            <strong>Supabase</strong> &mdash; database, authentication, and
+            file storage. Hosts your account, library, social activity, and
+            uploaded avatars.
+          </li>
+          <li>
+            <strong>ISBNdb</strong> &mdash; book metadata lookup. ISBNs and
+            search terms are sent to retrieve book information; no account or
+            personal data is shared.
+          </li>
+          <li>
+            <strong>Sentry</strong> &mdash; crash and error monitoring. Receives
+            anonymised error reports (stack traces, device model, OS version)
+            to help diagnose bugs. We do not send PII or content to Sentry.
+          </li>
+          <li>
+            <strong>Apple Push Notification service (APNs)</strong> &mdash;
+            delivers push notifications to your device when enabled.
+          </li>
+        </ul>
+        <p>
+          We do not sell or share your personal information with advertisers or
+          data brokers.
+        </p>
+
+        <h2>5. Why we store this data</h2>
         <p>We store this data to provide the app&apos;s core features:</p>
         <ul className="list-disc space-y-1 pl-6">
           <li>Tracking your reading</li>
@@ -55,11 +86,8 @@ export default function PrivacyPage() {
           <li>Showing your activity feed</li>
           <li>Social features (friends &amp; shared books)</li>
         </ul>
-        <p>
-          We do not sell or share your information with third parties.
-        </p>
 
-        <h2>4. Who can access your data</h2>
+        <h2>6. Who can access your data</h2>
         <ul className="list-disc space-y-1 pl-6">
           <li>Only you</li>
           <li>
@@ -71,14 +99,14 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h2>5. How long we keep data</h2>
+        <h2>7. How long we keep data</h2>
         <p>We retain your data until:</p>
         <ul className="list-disc space-y-1 pl-6">
           <li>You request deletion, or</li>
           <li>The beta ends and the app is shut down</li>
         </ul>
 
-        <h2>6. Your rights</h2>
+        <h2>8. Your rights</h2>
         <p>You may request:</p>
         <ul className="list-disc space-y-1 pl-6">
           <li>A copy of your data</li>
@@ -96,7 +124,7 @@ export default function PrivacyPage() {
           .
         </p>
 
-        <h2>7. Security</h2>
+        <h2>9. Security</h2>
         <p>
           Supabase provides encryption, row-level security, and authenticated
           access. While every effort is made to secure your data, no system is
