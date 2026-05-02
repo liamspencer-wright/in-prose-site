@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { NewsCard } from "@/components/news/news-card";
 import { NavBar } from "@/components/nav-bar";
 import Link from "next/link";
+import {
+  fetchBookGroupMeta,
+  parseBookListEntries,
+} from "@/lib/news-book-meta";
 
 export const metadata: Metadata = {
   title: "News — in prose",
@@ -19,6 +23,8 @@ const TYPE_FILTERS = [
   { value: "release_notes_app", label: "App updates" },
   { value: "release_notes_website", label: "Website updates" },
   { value: "featured_review", label: "Reviews" },
+  { value: "book_spotlight", label: "Book spotlights" },
+  { value: "book_list", label: "Book lists" },
   { value: "article", label: "Articles" },
   { value: "announcement", label: "Announcements" },
 ] as const;
@@ -52,6 +58,20 @@ export default async function NewsPage({
   }
 
   const { data: posts } = await query;
+
+  // Bulk-fetch book metadata for spotlight + list cards on this page
+  const groupIds = new Set<string>();
+  for (const p of posts ?? []) {
+    if (p.type === "book_spotlight" && p.spotlight_book_group_id) {
+      groupIds.add(p.spotlight_book_group_id);
+    }
+    if (p.type === "book_list") {
+      for (const e of parseBookListEntries(p.book_list_entries)) {
+        groupIds.add(e.book_group_id);
+      }
+    }
+  }
+  const bookMeta = await fetchBookGroupMeta(supabase, [...groupIds]);
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -87,7 +107,7 @@ export default async function NewsPage({
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {posts.map((post) => (
-              <NewsCard key={post.id} post={post} />
+              <NewsCard key={post.id} post={post} bookMeta={bookMeta} />
             ))}
           </div>
         )}

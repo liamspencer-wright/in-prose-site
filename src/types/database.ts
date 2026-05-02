@@ -1110,13 +1110,16 @@ export type Database = {
           id: string
           title: string
           slug: string
-          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement" | "book_spotlight" | "book_list"
           body: string
           excerpt: string | null
           cover_image_url: string | null
           status: "draft" | "published"
           published_at: string | null
           author_id: string | null
+          spotlight_book_group_id: string | null
+          book_list_entries: Json | null
+          image_urls: string[]
           created_at: string
           updated_at: string
         }
@@ -1124,13 +1127,16 @@ export type Database = {
           id?: string
           title: string
           slug: string
-          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          type: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement" | "book_spotlight" | "book_list"
           body?: string
           excerpt?: string | null
           cover_image_url?: string | null
           status?: "draft" | "published"
           published_at?: string | null
           author_id?: string | null
+          spotlight_book_group_id?: string | null
+          book_list_entries?: Json | null
+          image_urls?: string[]
           created_at?: string
           updated_at?: string
         }
@@ -1138,17 +1144,28 @@ export type Database = {
           id?: string
           title?: string
           slug?: string
-          type?: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement"
+          type?: "featured_review" | "release_notes_app" | "release_notes_website" | "article" | "announcement" | "book_spotlight" | "book_list"
           body?: string
           excerpt?: string | null
           cover_image_url?: string | null
           status?: "draft" | "published"
           published_at?: string | null
           author_id?: string | null
+          spotlight_book_group_id?: string | null
+          book_list_entries?: Json | null
+          image_urls?: string[]
           created_at?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "news_posts_spotlight_book_group_id_fkey"
+            columns: ["spotlight_book_group_id"]
+            isOneToOne: false
+            referencedRelation: "book_groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notifications: {
         Row: {
@@ -3183,6 +3200,8 @@ export type Database = {
         | "release_notes_website"
         | "article"
         | "announcement"
+        | "book_spotlight"
+        | "book_list"
       news_post_status_t: "draft" | "published"
       ownership_t: "owned" | "borrowed" | "not_owned"
       read_status_t: "to_read" | "reading" | "finished" | "dnf"
@@ -3334,6 +3353,8 @@ export const Constants = {
         "release_notes_website",
         "article",
         "announcement",
+        "book_spotlight",
+        "book_list",
       ],
       news_post_status_t: ["draft", "published"],
       ownership_t: ["owned", "borrowed", "not_owned"],
