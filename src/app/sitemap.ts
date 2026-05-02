@@ -75,16 +75,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  // Series + universes + browse facets — only entities meeting the
-  // ≥5-book threshold are emitted (browse RPC enforces this).
+  // Series + universes + browse facets + lists — only entities meeting the
+  // ≥5-book (browse) / ≥10-book (lists) thresholds are emitted (RPCs enforce).
   const [
     { data: seriesRows },
     { data: universeRows },
     { data: browseRows },
+    { data: listRows },
   ] = await Promise.all([
     supabase.rpc("get_series_for_sitemap"),
     supabase.rpc("get_universes_for_sitemap"),
     supabase.rpc("get_browse_facets_for_sitemap"),
+    supabase.rpc("get_lists_for_sitemap"),
   ]);
   const seriesPages: MetadataRoute.Sitemap = ((seriesRows ?? []) as Array<{
     slug: string;
@@ -117,7 +119,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.5,
   }));
 
-  // Lists land in #180.
+  const listsIndexPage: MetadataRoute.Sitemap = [
+    {
+      url: `${BASE_URL}/lists`,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    },
+  ];
+  const listPages: MetadataRoute.Sitemap = ((listRows ?? []) as Array<{
+    slug: string;
+  }>).map((r) => ({
+    url: `${BASE_URL}/lists/${r.slug}`,
+    changeFrequency: "daily" as const,
+    priority: 0.6,
+  }));
 
   return [
     ...staticPages,
@@ -129,5 +144,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...universePages,
     ...browseIndexPage,
     ...browsePages,
+    ...listsIndexPage,
+    ...listPages,
   ];
 }
