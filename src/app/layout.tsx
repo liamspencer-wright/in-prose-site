@@ -6,6 +6,7 @@ import { CookieConsent } from "@/components/cookie-consent";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { JsonLd } from "@/lib/seo/json-ld";
 import { organizationSchema, websiteSchema } from "@/lib/seo/schema";
+import { AiReferrerBeacon } from "@/components/seo/ai-referrer-beacon";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -62,6 +63,14 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  verification: {
+    ...(process.env.GOOGLE_SITE_VERIFICATION && {
+      google: process.env.GOOGLE_SITE_VERIFICATION,
+    }),
+    ...(process.env.BING_SITE_VERIFICATION && {
+      other: { "msvalidate.01": process.env.BING_SITE_VERIFICATION },
+    }),
+  },
 };
 
 export default function RootLayout({
@@ -90,6 +99,7 @@ export default function RootLayout({
           <AppShell>{children}</AppShell>
           <CookieConsent />
           <PwaInstallBanner />
+          <AiReferrerBeacon />
         </AuthProvider>
       </body>
     </html>

@@ -177,21 +177,81 @@ builders.
 
 ## Measurement
 
-> Implemented under
-> [#188](https://github.com/liamspencer-wright/in-prose-site/issues/188).
+> Foundation shipped under
+> [#188](https://github.com/liamspencer-wright/in-prose-site/issues/188);
+> Search Console / Bing API ingestion + citation tracker still TODO.
 
-- Google Search Console + Bing Webmaster Tools verified; sitemap submitted.
-- IndexNow ping fires on publish/update of public routes (book, author, list,
-  series, universe, news, browse).
-- Internal `/admin/seo` dashboard surfaces weekly metrics from Search Console,
-  RUM, and AI-referrer logs.
-- AI-referrer detection logs every request whose `Referer` matches a known AI
-  host (chat.openai.com, chatgpt.com, perplexity.ai, claude.ai,
-  gemini.google.com, you.com, phind.com, bing.com/chat) into `analytics_events`
-  with type `seo_ai_referrer`.
-- Citation tracking script runs a fixed test set of book-recommendation prompts
-  weekly against ChatGPT/Perplexity/Claude/Gemini and records whether
-  inprose.co.uk is cited.
+### Verification
+
+Google Search Console + Bing Webmaster verification meta tags are env-driven:
+
+```env
+GOOGLE_SITE_VERIFICATION=...
+BING_SITE_VERIFICATION=...
+```
+
+`src/app/layout.tsx` injects them via `metadata.verification`. After verifying,
+submit `https://inprose.co.uk/sitemap.xml` to both consoles.
+
+### IndexNow
+
+- Lib: `src/lib/seo/indexnow.ts` — `pingIndexNow(urls[])`,
+  `pingIndexNowOne(url)`. No-op when `INDEXNOW_KEY` env is unset.
+- Key file: served at `/<INDEXNOW_KEY>.txt` via `middleware.ts` (validation
+  endpoint Bing/Yandex fetch to confirm ownership).
+- Wire-in points: news post publish flow; book/author/list/series page changes
+  once those routes ship. Add inside the relevant write path; failures must
+  not block the user-facing action.
+
+### AI-referrer detection
+
+Two-path strategy:
+
+1. **Client beacon** — `<AiReferrerBeacon />` (rendered globally from
+   `src/app/layout.tsx`) reads `document.referrer` on mount, posts to
+   `/api/seo/referrer` if the host matches a known AI chat UI. Uses
+   `navigator.sendBeacon` for fire-and-forget.
+2. **Server-side detection** — same logic in `src/lib/seo/ai-referrer.ts`
+   re-runs on the API endpoint to gate writes (clients can't fabricate
+   sources). Headers-based UA detection for live-serving bots
+   (`OAI-SearchBot`, `ChatGPT-User`, `PerplexityBot`, `claude-web`,
+   `Anthropic-AI`) is in the same module but is **not yet wired** — UA-bot
+   logging from middleware is deferred (would require fire-and-forget edge
+   logic; current solution covers human chat-UI traffic which is the
+   higher-value bucket).
+
+Detected sources: `chatgpt`, `perplexity`, `claude`, `gemini`, `you`, `phind`,
+`bing-chat`, `copilot`. New sources: extend `HOST_TO_SOURCE` in
+`src/lib/seo/ai-referrer.ts` and the matching `AI_HOSTS` set in the beacon.
+
+Events land in `seo_referrer_events` (`occurred_at`, `referrer_host`,
+`source`, `path`, `user_agent`, `country`). RLS allows admins to read.
+
+### Internal dashboard
+
+`/admin/seo` (admin-only via `src/app/admin/layout.tsx`) shows:
+
+- AI-referrer event totals + per-source breakdown (last 7d / 30d)
+- Recent events stream
+- Latest weekly snapshot from `seo_metrics_snapshots` (empty until cron is wired)
+- Configuration checklist for env vars
+
+### Citation tracker
+
+`scripts/seo/citation-check.ts` — scaffold with a final test set of 20
+book-recommendation prompts and provider-agnostic scoring. Provider SDK calls
+are stubbed; wire them up when starting the weekly run. Output writes a row to
+`seo_metrics_snapshots` with `citation_test_set` + `citation_hits`.
+
+### Deferred
+
+- Daily Search Console + Bing Webmaster API ingestion populating the
+  `gsc_*`/`bing_*` columns of `seo_metrics_snapshots`. Needs OAuth setup; not
+  blocking the foundation.
+- UA-based AI-bot logging from middleware (training crawler hits visible in
+  raw access logs for now).
+- Brand SERP knowledge-panel monitoring with alert on regression.
+- IndexNow integration with news publish flow + future content routes.
 
 ## Quick reference: where things live
 
