@@ -315,12 +315,13 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
           </h2>
           <div className="flex flex-wrap gap-2">
             {book.genres.map((g) => (
-              <span
+              <Link
                 key={g}
-                className="rounded-full bg-bg-medium px-3 py-1 text-xs text-text-muted"
+                href={`/browse/genre/${slugify(g)}`}
+                className="rounded-full bg-bg-medium px-3 py-1 text-xs text-text-muted hover:bg-accent-blue/5 hover:text-text-primary"
               >
                 {g}
-              </span>
+              </Link>
             ))}
           </div>
         </section>
@@ -737,6 +738,15 @@ function buildBookFaq(book: BookData): Array<{ question: string; answer: string 
 
 function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").trim();
+}
+
+// Mirrors the SQL `facet_slugify` so client-side genre chip links resolve to
+// the same slug the DB uses for browse pages.
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function sanitiseHtml(html: string): string {

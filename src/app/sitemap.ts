@@ -75,10 +75,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  // Series + universes — every entity with at least one member.
-  const [{ data: seriesRows }, { data: universeRows }] = await Promise.all([
+  // Series + universes + browse facets — only entities meeting the
+  // ≥5-book threshold are emitted (browse RPC enforces this).
+  const [
+    { data: seriesRows },
+    { data: universeRows },
+    { data: browseRows },
+  ] = await Promise.all([
     supabase.rpc("get_series_for_sitemap"),
     supabase.rpc("get_universes_for_sitemap"),
+    supabase.rpc("get_browse_facets_for_sitemap"),
   ]);
   const seriesPages: MetadataRoute.Sitemap = ((seriesRows ?? []) as Array<{
     slug: string;
@@ -95,7 +101,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  // Browse + lists land in subsequent sub-issues.
+  const browseIndexPage: MetadataRoute.Sitemap = [
+    {
+      url: `${BASE_URL}/browse`,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    },
+  ];
+  const browsePages: MetadataRoute.Sitemap = ((browseRows ?? []) as Array<{
+    facet: string;
+    slug: string;
+  }>).map((r) => ({
+    url: `${BASE_URL}/browse/${r.facet}/${r.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.5,
+  }));
+
+  // Lists land in #180.
 
   return [
     ...staticPages,
@@ -105,5 +127,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...authorPages,
     ...seriesPages,
     ...universePages,
+    ...browseIndexPage,
+    ...browsePages,
   ];
 }
