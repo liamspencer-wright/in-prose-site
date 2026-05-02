@@ -148,10 +148,11 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
     sharer = await fetchSharerInfo(isbn, shared_by);
   }
 
-  const [reviews, moreByAuthor, reviewSummary] = await Promise.all([
+  const [reviews, moreByAuthor, reviewSummary, authorLink] = await Promise.all([
     fetchPublicReviews(isbn, 5),
     fetchMoreByAuthor(isbn, 6),
     fetchPublicReviewSummary(isbn),
+    fetchAuthorLink(isbn),
   ]);
 
   const coverSrc = book.image || book.image_original;
@@ -187,7 +188,16 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
           )}
           {book.authors && book.authors.length > 0 && (
             <p className="mt-2 text-text-muted">
-              {book.authors.join(", ")}
+              {authorLink ? (
+                <Link
+                  href={`/authors/${authorLink.slug}`}
+                  className="hover:text-accent hover:underline"
+                >
+                  {book.authors.join(", ")}
+                </Link>
+              ) : (
+                book.authors.join(", ")
+              )}
             </p>
           )}
           <div className="mt-3 flex flex-wrap gap-3 text-sm text-text-subtle max-sm:justify-center">
@@ -345,7 +355,17 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
       {moreByAuthor.length > 0 && (
         <section id="more-by-author" className="mb-8">
           <h2 className="mb-3 text-lg font-bold">
-            More by {book.first_author_name ?? "this author"}
+            More by{" "}
+            {authorLink ? (
+              <Link
+                href={`/authors/${authorLink.slug}`}
+                className="text-accent hover:underline"
+              >
+                {authorLink.name}
+              </Link>
+            ) : (
+              book.first_author_name ?? "this author"
+            )}
           </h2>
           <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-2">
             {moreByAuthor.map((b) => (
@@ -491,6 +511,19 @@ async function fetchMoreByAuthor(
   });
   if (error || !data) return [];
   return data as AuthorBook[];
+}
+
+async function fetchAuthorLink(
+  isbn: string
+): Promise<{ name: string; slug: string } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .rpc("get_author_slug_for_isbn", { p_isbn13: isbn })
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as { name: string | null; slug: string | null };
+  if (!row.slug || !row.name) return null;
+  return { name: row.name, slug: row.slug };
 }
 
 async function fetchPublicReviewSummary(isbn: string): Promise<ReviewSummary> {

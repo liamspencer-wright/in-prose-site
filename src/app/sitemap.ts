@@ -66,8 +66,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }));
 
-  // Authors / series / universes / browse / lists are added in their own
-  // sub-issues (#177, #178, #179, #180). Slot them in here when the routes ship.
+  // Authors — every author with ≥ 1 book.
+  const { data: authors } = await supabase.rpc("get_authors_for_sitemap");
+  const authorRows = (authors ?? []) as Array<{ id: string; slug: string }>;
+  const authorPages: MetadataRoute.Sitemap = authorRows.map((a) => ({
+    url: `${BASE_URL}/authors/${a.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
 
-  return [...staticPages, ...bookPages, ...profilePages, ...newsPages];
+  // Series / universes / browse / lists land in subsequent sub-issues.
+
+  return [
+    ...staticPages,
+    ...bookPages,
+    ...profilePages,
+    ...newsPages,
+    ...authorPages,
+  ];
 }
