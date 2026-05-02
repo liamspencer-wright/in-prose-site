@@ -26,8 +26,6 @@ const PRIVATE_DISALLOW = [
   "/account/",
   "/settings",
   "/settings/",
-  "/feed",
-  "/feed/",
   "/search",
   "/search/",
   "/import",
