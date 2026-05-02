@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BookEditWrapper } from "@/components/book-edit-wrapper";
 import UserAvatar from "@/components/user-avatar";
+import { getCanonicalIsbn } from "@/lib/seo/canonical";
 
 export const revalidate = 300; // 5 minutes
 
@@ -45,7 +46,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { isbn } = await params;
   const book = (await fetchBook(isbn)) ?? (await fetchFromISBNdb(isbn));
 
-  if (!book) return { title: "Book not found" };
+  if (!book) return { title: "Book not found", robots: { index: false } };
+
+  const canonical = await getCanonicalIsbn(isbn);
 
   const authorText = book.authors?.length
     ? ` by ${book.authors.join(", ")}`
@@ -58,6 +61,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
+    alternates: {
+      canonical: `/book/${canonical}`,
+    },
     itunes: {
       appId: "6740043848",
       appArgument: `inprose://book/${isbn}`,
@@ -66,6 +72,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       type: "book",
+      url: `https://inprose.co.uk/book/${canonical}`,
       ...(book.image && {
         images: [{ url: book.image, width: 300, height: 450 }],
       }),
@@ -83,6 +90,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function PublicBookPage({ params, searchParams }: Props) {
   const { isbn } = await params;
   const { shared_by } = await searchParams;
+
+  // Edition canonicalisation — redirect non-canonical ISBNs to the canonical one,
+  // preserving query strings so share-link context survives the redirect.
+  const canonical = await getCanonicalIsbn(isbn);
+  if (canonical !== isbn) {
+    const qs = shared_by ? `?shared_by=${encodeURIComponent(shared_by)}` : "";
+    permanentRedirect(`/book/${canonical}${qs}`);
+  }
 
   let book = await fetchBook(isbn);
 

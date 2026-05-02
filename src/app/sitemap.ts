@@ -1,7 +1,12 @@
 import type { MetadataRoute } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { buildCanonicalIndex } from "@/lib/seo/canonical";
 
 const BASE_URL = "https://inprose.co.uk";
+
+// Sitemaps must stay below 50,000 URLs (Google + Bing limit).
+// If we cross that threshold for any single category, split via Next's
+// `generateSitemaps` API and serve a sitemap index. See docs/SEO.md.
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = await createClient();
@@ -15,32 +20,39 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/contact`, changeFrequency: "yearly", priority: 0.3 },
   ];
 
-  // Public book pages
+  // Books — only emit one URL per work (canonical edition).
   const { data: books } = await supabase
     .from("books_expanded")
     .select("isbn13")
     .order("isbn13");
 
-  const bookPages: MetadataRoute.Sitemap = (books ?? []).map((book) => ({
-    url: `${BASE_URL}/book/${book.isbn13}`,
-    changeFrequency: "weekly" as const,
-    priority: 0.7,
-  }));
+  const allIsbns = (books ?? []).map((b) => b.isbn13);
+  const { canonicalSet } = await buildCanonicalIndex(allIsbns);
 
-  // Public user profiles (only users with a username)
+  const bookPages: MetadataRoute.Sitemap = Array.from(canonicalSet).map(
+    (isbn) => ({
+      url: `${BASE_URL}/book/${isbn}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })
+  );
+
+  // Public profiles — only users with a username.
   const { data: profiles } = await supabase
     .from("profiles")
     .select("username")
     .not("username", "is", null)
     .order("username");
 
-  const profilePages: MetadataRoute.Sitemap = (profiles ?? []).map((profile) => ({
-    url: `${BASE_URL}/u/${profile.username}`,
-    changeFrequency: "weekly" as const,
-    priority: 0.5,
-  }));
+  const profilePages: MetadataRoute.Sitemap = (profiles ?? []).map(
+    (profile) => ({
+      url: `${BASE_URL}/u/${profile.username}`,
+      changeFrequency: "weekly" as const,
+      priority: 0.5,
+    })
+  );
 
-  // News posts
+  // News posts.
   const { data: newsPosts } = await supabase
     .from("news_posts")
     .select("slug, published_at")
@@ -53,6 +65,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: "monthly" as const,
     priority: 0.7,
   }));
+
+  // Authors / series / universes / browse / lists are added in their own
+  // sub-issues (#177, #178, #179, #180). Slot them in here when the routes ship.
 
   return [...staticPages, ...bookPages, ...profilePages, ...newsPages];
 }
