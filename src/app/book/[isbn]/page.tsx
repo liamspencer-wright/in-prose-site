@@ -71,6 +71,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     description,
     alternates: {
       canonical: `/book/${canonical}`,
+      types: {
+        "text/markdown": `/book/${canonical}/llms.txt`,
+      },
     },
     itunes: {
       appId: "6740043848",
