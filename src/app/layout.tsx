@@ -7,6 +7,7 @@ import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { JsonLd } from "@/lib/seo/json-ld";
 import { organizationSchema, websiteSchema } from "@/lib/seo/schema";
 import { AiReferrerBeacon } from "@/components/seo/ai-referrer-beacon";
+import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
 const crimsonText = Crimson_Text({
@@ -96,7 +97,10 @@ export default function RootLayout({
           Skip to main content
         </a>
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <AppShell>
+            {children}
+            <SiteFooter />
+          </AppShell>
           <CookieConsent />
           <PwaInstallBanner />
           <AiReferrerBeacon />
