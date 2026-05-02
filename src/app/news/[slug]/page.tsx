@@ -19,6 +19,7 @@ import {
   siteId,
   SITE_URL,
 } from "@/lib/seo/schema";
+import { extractBodyMentions } from "@/lib/seo/news-mentions";
 
 type NewsPost = Database["public"]["Tables"]["news_posts"]["Row"];
 
@@ -82,22 +83,6 @@ export default async function NewsArticlePage({
 
   if (!post) notFound();
 
-  const schemas = [
-    articleSchema({
-      slug: post.slug,
-      headline: post.title,
-      description: post.excerpt,
-      image: post.cover_image_url ?? post.image_urls?.[0] ?? null,
-      datePublished: post.published_at,
-      dateModified: post.updated_at,
-    }),
-    breadcrumbListSchema([
-      { name: "Home", url: SITE_URL },
-      { name: "News", url: siteId("/news") },
-      { name: post.title, url: siteId(`/news/${post.slug}`) },
-    ]),
-  ];
-
   let bookMeta = null;
   let listEntries = parseBookListEntries(post.book_list_entries);
   let listMeta = new Map();
@@ -111,6 +96,28 @@ export default async function NewsArticlePage({
       listEntries.map((e) => e.book_group_id),
     );
   }
+
+  // Build Article.mentions[] from a URL scan of the body. Structured-field
+  // mentions for book_spotlight / book_list posts are derivable but require
+  // a canonical-ISBN-per-group lookup that isn't batched yet — defer.
+  const mentions = extractBodyMentions(post.body);
+
+  const schemas = [
+    articleSchema({
+      slug: post.slug,
+      headline: post.title,
+      description: post.excerpt,
+      image: post.cover_image_url ?? post.image_urls?.[0] ?? null,
+      datePublished: post.published_at,
+      dateModified: post.updated_at,
+      mentions,
+    }),
+    breadcrumbListSchema([
+      { name: "Home", url: SITE_URL },
+      { name: "News", url: siteId("/news") },
+      { name: post.title, url: siteId(`/news/${post.slug}`) },
+    ]),
+  ];
 
   return (
     <div className="flex min-h-svh flex-col">

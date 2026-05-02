@@ -321,3 +321,7 @@ Config in `lighthouserc.json`.
 | Web Vitals beacon | `src/components/seo/web-vitals.tsx` + `src/app/api/web-vitals/route.ts` |
 | Perf budgets | `src/lib/perf/budgets.ts` |
 | Lighthouse CI | `.github/workflows/lighthouse.yml` + `lighthouserc.json` |
+| Editorial calendar | `docs/SEO_EDITORIAL_CALENDAR.md` |
+| Content brief template | `templates/content-brief.md` |
+| Article mentions[] | `src/lib/seo/news-mentions.ts` |
+| News audit script | `scripts/seo/news-audit.ts` |

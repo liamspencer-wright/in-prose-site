@@ -272,6 +272,15 @@ export function faqPageSchema(qa: Array<{ question: string; answer: string }>) {
 
 // ── Article (news posts) ──
 
+export type MentionRef = {
+  /** schema.org @type — Book, Person, ItemList (for series/universe/lists). */
+  type: "Book" | "Person" | "ItemList";
+  /** Canonical @id (matches the entity's own page schema). */
+  id: string;
+  /** Display name (optional — strengthens AI citation context). */
+  name?: string;
+};
+
 export type ArticleSchemaInput = {
   slug: string;
   headline: string;
@@ -280,6 +289,12 @@ export type ArticleSchemaInput = {
   datePublished?: string | null;
   dateModified?: string | null;
   authorName?: string;
+  /**
+   * Entities the article references. Each entry cross-references a Book / Person
+   * / Series / Universe / List elsewhere on the site so AI assistants can
+   * resolve "which books does this article actually talk about".
+   */
+  mentions?: MentionRef[];
 };
 
 export function articleSchema(input: ArticleSchemaInput) {
@@ -300,6 +315,14 @@ export function articleSchema(input: ArticleSchemaInput) {
   if (input.dateModified) ld.dateModified = input.dateModified;
   if (input.authorName) {
     ld.author = { "@type": "Person", name: input.authorName };
+  }
+
+  if (input.mentions && input.mentions.length > 0) {
+    ld.mentions = input.mentions.map((m) => ({
+      "@type": m.type,
+      "@id": m.id,
+      ...(m.name && { name: m.name }),
+    }));
   }
 
   return ld;
