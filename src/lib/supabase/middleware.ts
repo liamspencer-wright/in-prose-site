@@ -5,13 +5,10 @@ const PROTECTED_ROUTES = [
   "/library",
   "/search",
   "/friends",
-  "/feed",
   "/settings",
   "/signup/profile",
   "/admin",
 ];
-
-const ADMIN_ROUTES = ["/admin"];
 
 const AUTH_ROUTES = ["/login", "/signup", "/forgot-password"];
 
@@ -60,7 +57,6 @@ export async function updateSession(request: NextRequest) {
       "/library": "Log in to access your library",
       "/search": "Log in to search and add books",
       "/friends": "Log in to see your friends",
-      "/feed": "Log in to view your feed",
       "/settings": "Log in to access settings",
       "/account": "Log in to access your account",
     };
@@ -89,16 +85,6 @@ export async function updateSession(request: NextRequest) {
     if (!profile?.username) {
       const url = request.nextUrl.clone();
       url.pathname = "/signup/profile";
-      return NextResponse.redirect(url);
-    }
-
-    // Admin routes require is_admin flag
-    const isAdminRoute = ADMIN_ROUTES.some((route) =>
-      request.nextUrl.pathname.startsWith(route)
-    );
-    if (isAdminRoute && !profile?.is_admin) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/";
       return NextResponse.redirect(url);
     }
   }
