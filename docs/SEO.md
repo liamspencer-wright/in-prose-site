@@ -253,6 +253,55 @@ are stubbed; wire them up when starting the weekly run. Output writes a row to
 - Brand SERP knowledge-panel monitoring with alert on regression.
 - IndexNow integration with news publish flow + future content routes.
 
+## Performance
+
+> Implemented under
+> [#187](https://github.com/liamspencer-wright/in-prose-site/issues/187).
+
+### Budgets
+
+Defined in `src/lib/perf/budgets.ts`. Match Google's "good" thresholds (75th
+percentile):
+
+| Metric | Budget |
+|---|---|
+| LCP | < 2500 ms |
+| INP | < 200 ms |
+| CLS | < 0.1 |
+| FCP | < 1800 ms |
+| TTFB | < 600 ms |
+| Initial JS (gzipped) | < 150 KB |
+
+### Real User Monitoring
+
+`<WebVitalsBeacon />` (rendered globally from `src/app/layout.tsx`) subscribes
+to LCP / INP / CLS / FCP / TTFB via the [`web-vitals`](https://github.com/GoogleChrome/web-vitals)
+library and pings `/api/web-vitals`. The endpoint writes to
+`web_vitals_events` (admin-readable RLS) via the service role.
+
+Aggregate p75 per-route via the SEO dashboard once volume is sufficient.
+
+### Lighthouse CI
+
+GitHub Actions workflow `.github/workflows/lighthouse.yml` runs on every PR
+to `dev` / `main`:
+- Builds the site with the production env vars.
+- Runs Lighthouse CI against `/`, `/news`, `/browse`, `/lists` (representative
+  templates — extend as new public templates ship).
+- Asserts performance ≥ 0.85, SEO ≥ 0.95, with per-metric warnings for LCP,
+  CLS, FCP, server-response-time, total-byte-weight.
+- Uploads to temporary public storage; link appears in the PR check.
+
+Config in `lighthouserc.json`.
+
+### Deferred (#187 follow-ups)
+
+- Image CDN routing — pre-existing setup; not blocking the budget.
+- Bundle analyzer report in CI — easy follow-up via `next-bundle-analyzer`.
+- Nightly sitemap-driven smoke perf — needs separate workflow + alert wiring.
+- Critical CSS inline + non-critical CSS defer — Tailwind already produces
+  small CSS; revisit only if Lighthouse flags it.
+
 ## Quick reference: where things live
 
 | Concern | File / route |
@@ -267,3 +316,8 @@ are stubbed; wire them up when starting the weekly run. Output writes a row to
 | IndexNow ping | `src/lib/seo/indexnow.ts` |
 | AI-referrer logging | `middleware.ts` (or `src/lib/seo/ai-referrer.ts`) |
 | Internal dashboard | `src/app/admin/seo/page.tsx` |
+| Site footer hub | `src/components/site-footer.tsx` |
+| Link audit script | `scripts/seo/link-audit.ts` |
+| Web Vitals beacon | `src/components/seo/web-vitals.tsx` + `src/app/api/web-vitals/route.ts` |
+| Perf budgets | `src/lib/perf/budgets.ts` |
+| Lighthouse CI | `.github/workflows/lighthouse.yml` + `lighthouserc.json` |

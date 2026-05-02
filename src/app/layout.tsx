@@ -7,6 +7,7 @@ import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { JsonLd } from "@/lib/seo/json-ld";
 import { organizationSchema, websiteSchema } from "@/lib/seo/schema";
 import { AiReferrerBeacon } from "@/components/seo/ai-referrer-beacon";
+import { WebVitalsBeacon } from "@/components/seo/web-vitals";
 import { SiteFooter } from "@/components/site-footer";
 import "./globals.css";
 
@@ -104,6 +105,7 @@ export default function RootLayout({
           <CookieConsent />
           <PwaInstallBanner />
           <AiReferrerBeacon />
+          <WebVitalsBeacon />
         </AuthProvider>
       </body>
     </html>
