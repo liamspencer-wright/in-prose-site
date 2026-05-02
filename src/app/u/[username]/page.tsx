@@ -58,9 +58,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description: `See what ${profile.display_name ?? profile.username} is reading on in prose.`,
       url: `https://inprose.co.uk/u/${profile.username}`,
-      ...(profile.avatar_url && {
-        images: [{ url: profile.avatar_url, width: 200, height: 200 }],
-      }),
+      // Dynamic OG image served from src/app/u/[username]/opengraph-image.tsx
     },
   };
 }

@@ -49,8 +49,6 @@ export async function generateMetadata({
 
   if (!post) return { title: "Not found — in prose", robots: { index: false } };
 
-  const ogImage = post.cover_image_url ?? post.image_urls?.[0] ?? null;
-
   return {
     title: `${post.title} — in prose`,
     description: post.excerpt ?? undefined,
@@ -62,7 +60,7 @@ export async function generateMetadata({
       description: post.excerpt ?? undefined,
       url: `https://inprose.co.uk/news/${slug}`,
       type: "article",
-      images: ogImage ? [{ url: ogImage }] : undefined,
+      // Dynamic OG image served from src/app/news/[slug]/opengraph-image.tsx
     },
   };
 }

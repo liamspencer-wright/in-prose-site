@@ -109,12 +109,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       description,
       type: "book",
       url: `https://inprose.co.uk/book/${canonical}`,
-      ...(book.image && {
-        images: [{ url: book.image, width: 300, height: 450 }],
-      }),
+      // Dynamic OG image served from src/app/book/[isbn]/opengraph-image.tsx
     },
     twitter: {
-      card: book.image ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title,
       description,
     },
