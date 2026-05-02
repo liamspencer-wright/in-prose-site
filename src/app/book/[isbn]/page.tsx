@@ -10,6 +10,7 @@ import {
   bookSchema,
   breadcrumbListSchema,
   faqPageSchema,
+  reviewSchema,
   siteId,
   SITE_URL,
 } from "@/lib/seo/schema";
@@ -46,6 +47,30 @@ type SharerInfo = {
   rating: number | null;
   review: string | null;
   status: string | null;
+};
+
+type PublicReview = {
+  user_id: string;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  badge_type: string | null;
+  rating: number | null;
+  review: string;
+  finished_at: string | null;
+  created_at: string | null;
+};
+
+type AuthorBook = {
+  isbn13: string;
+  title: string | null;
+  image: string | null;
+  pub_year: number | null;
+};
+
+type ReviewSummary = {
+  review_count: number;
+  avg_rating: number | null;
 };
 
 // ── Metadata (OG tags for link previews) ──
@@ -125,9 +150,15 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
     sharer = await fetchSharerInfo(isbn, shared_by);
   }
 
+  const [reviews, moreByAuthor, reviewSummary] = await Promise.all([
+    fetchPublicReviews(isbn, 5),
+    fetchMoreByAuthor(isbn, 6),
+    fetchPublicReviewSummary(isbn),
+  ]);
+
   const coverSrc = book.image || book.image_original;
 
-  const schemas = buildBookPageSchemas(book, canonical);
+  const schemas = buildBookPageSchemas(book, canonical, reviews, reviewSummary);
 
   return (
     <div className="mx-auto max-w-2xl px-6 py-12 max-sm:px-4">
@@ -262,6 +293,95 @@ export default async function PublicBookPage({ params, searchParams }: Props) {
         </section>
       )}
 
+      {/* Public reviews */}
+      {reviews.length > 0 && (
+        <section id="reviews" className="mb-8">
+          <h2 className="mb-3 text-lg font-bold">
+            Reviews{" "}
+            <span className="text-sm font-normal text-text-muted">
+              ({reviewSummary.review_count})
+            </span>
+          </h2>
+          <ul className="space-y-4">
+            {reviews.map((r) => (
+              <li
+                key={r.user_id}
+                className="rounded-(--radius-card) border border-border-subtle bg-bg-medium p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <UserAvatar
+                    url={r.avatar_url}
+                    name={r.display_name}
+                    size={36}
+                    badgeType={r.badge_type}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">
+                      {r.display_name ?? r.username ?? "A reader"}
+                      {r.username && (
+                        <Link
+                          href={`/u/${r.username}`}
+                          className="ml-1 text-sm font-normal text-text-muted hover:text-accent"
+                        >
+                          @{r.username}
+                        </Link>
+                      )}
+                      {r.rating !== null && r.rating > 0 && (
+                        <span className="ml-2 text-sm text-text-muted">
+                          ★ {Number(r.rating).toFixed(1)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-text-muted">
+                      {r.review}
+                    </p>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* More by author */}
+      {moreByAuthor.length > 0 && (
+        <section id="more-by-author" className="mb-8">
+          <h2 className="mb-3 text-lg font-bold">
+            More by {book.first_author_name ?? "this author"}
+          </h2>
+          <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-2">
+            {moreByAuthor.map((b) => (
+              <Link
+                key={b.isbn13}
+                href={`/book/${b.isbn13}`}
+                className="group block"
+              >
+                <div className="aspect-[2/3] overflow-hidden rounded-(--radius-input) bg-bg-medium">
+                  {b.image ? (
+                    /* eslint-disable-next-line @next/next/no-img-element */
+                    <img
+                      src={b.image}
+                      alt={b.title ?? "Book cover"}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xs text-text-subtle">
+                      No cover
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-tight">
+                  {b.title ?? "Untitled"}
+                </p>
+                {b.pub_year && (
+                  <p className="text-xs text-text-subtle">{b.pub_year}</p>
+                )}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Edit controls for logged-in users, CTA for guests */}
       <BookEditWrapper
         isbn={book.isbn13}
@@ -349,6 +469,45 @@ async function fetchFromISBNdb(isbn: string): Promise<BookData | null> {
   }
 }
 
+async function fetchPublicReviews(
+  isbn: string,
+  limit: number
+): Promise<PublicReview[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_public_reviews_for_isbn", {
+    p_isbn13: isbn,
+    p_limit: limit,
+  });
+  if (error || !data) return [];
+  return data as PublicReview[];
+}
+
+async function fetchMoreByAuthor(
+  isbn: string,
+  limit: number
+): Promise<AuthorBook[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_more_books_by_author", {
+    p_isbn13: isbn,
+    p_limit: limit,
+  });
+  if (error || !data) return [];
+  return data as AuthorBook[];
+}
+
+async function fetchPublicReviewSummary(isbn: string): Promise<ReviewSummary> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .rpc("get_public_review_summary_for_isbn", { p_isbn13: isbn })
+    .maybeSingle();
+  if (error || !data) return { review_count: 0, avg_rating: null };
+  const row = data as { review_count: number | null; avg_rating: number | null };
+  return {
+    review_count: row.review_count ?? 0,
+    avg_rating: row.avg_rating,
+  };
+}
+
 async function fetchSharerInfo(
   isbn: string,
   userId: string
@@ -388,8 +547,32 @@ async function fetchSharerInfo(
 
 // ── Helpers ──
 
-function buildBookPageSchemas(book: BookData, canonical: string): unknown[] {
+function buildBookPageSchemas(
+  book: BookData,
+  canonical: string,
+  reviews: PublicReview[],
+  reviewSummary: ReviewSummary
+): unknown[] {
   const description = book.synopsis ? stripHtml(book.synopsis).slice(0, 500) : null;
+
+  // Prefer the public-review summary (always accurate) over books_expanded
+  // columns which may not exist in every environment.
+  const ratingForSchema =
+    reviewSummary.review_count > 0 && reviewSummary.avg_rating !== null
+      ? {
+          ratingValue: reviewSummary.avg_rating,
+          ratingCount: reviewSummary.review_count,
+        }
+      : book.community_rating !== null &&
+          book.ratings_count !== null &&
+          book.ratings_count > 0
+        ? {
+            ratingValue: book.community_rating,
+            ratingCount: book.ratings_count,
+          }
+        : null;
+
+  const bookId = siteId(`/book/${canonical}`);
 
   const schemas: unknown[] = [
     bookSchema({
@@ -403,24 +586,29 @@ function buildBookPageSchemas(book: BookData, canonical: string): unknown[] {
       pages: book.pages,
       genres: book.genres,
       description,
-      rating:
-        book.community_rating !== null &&
-        book.ratings_count !== null &&
-        book.ratings_count > 0
-          ? {
-              ratingValue: book.community_rating,
-              ratingCount: book.ratings_count,
-            }
-          : null,
+      rating: ratingForSchema,
     }),
     breadcrumbListSchema([
       { name: "Home", url: SITE_URL },
       {
         name: book.title ?? "Untitled",
-        url: siteId(`/book/${canonical}`),
+        url: bookId,
       },
     ]),
   ];
+
+  for (const r of reviews) {
+    schemas.push(
+      reviewSchema({
+        itemReviewedId: bookId,
+        authorName: r.display_name ?? r.username ?? "A reader",
+        authorUrl: r.username ? siteId(`/u/${r.username}`) : undefined,
+        ratingValue: r.rating ?? null,
+        reviewBody: r.review,
+        datePublished: r.finished_at ?? r.created_at ?? undefined,
+      })
+    );
+  }
 
   const faq = buildBookFaq(book);
   if (faq.length > 0) schemas.push(faqPageSchema(faq));

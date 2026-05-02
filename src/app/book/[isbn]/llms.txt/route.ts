@@ -90,6 +90,30 @@ export async function GET(_req: Request, { params }: Props) {
     }
   }
 
+  // Public reviews — fact-dense, citation-friendly, capped to 5.
+  const { data: reviews } = await supabase.rpc(
+    "get_public_reviews_for_isbn",
+    { p_isbn13: isbn, p_limit: 5 }
+  );
+
+  type ReviewRow = {
+    display_name: string | null;
+    username: string | null;
+    rating: number | null;
+    review: string;
+  };
+
+  if (reviews && (reviews as ReviewRow[]).length > 0) {
+    lines.push("## Reviews");
+    lines.push("");
+    for (const r of reviews as ReviewRow[]) {
+      const who = r.display_name ?? r.username ?? "A reader";
+      const rating = r.rating !== null && r.rating > 0 ? ` (${Number(r.rating).toFixed(1)}/10)` : "";
+      lines.push(`- **${who}${rating}**: ${r.review}`);
+      lines.push("");
+    }
+  }
+
   return new Response(lines.join("\n"), {
     headers: {
       "content-type": "text/plain; charset=utf-8",
